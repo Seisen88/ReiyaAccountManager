@@ -2966,8 +2966,9 @@ async fn download_and_install_update(app: tauri::AppHandle, url: String) -> Resu
     file.flush().await.map_err(|e| e.to_string())?;
     drop(file);
 
-    // Launch installer, then exit — installer handles replacing the running binary
+    // /S = NSIS silent install — no dialogs, replaces running binary automatically
     std::process::Command::new(&tmp_path)
+        .arg("/S")
         .spawn()
         .map_err(|e| format!("Failed to launch installer: {}", e))?;
 
