@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
+import { useLanguage } from "../context/LanguageContext";
 import {
   ChevronLeftIcon, CheckIcon, LoaderIcon,
   SlidersIcon, ZapIcon, ClockIcon, LayoutIcon,
@@ -10,118 +11,118 @@ import {
 } from "../components/Icons";
 
 const TABS = [
-  { id: "app",       label: "App",        Icon: SettingsIcon,  accent: "#A78BFA",
-    desc: "General application behavior and UI preferences" },
-  { id: "client",    label: "Client",     Icon: GamepadIcon,   accent: "#60A5FA",
-    desc: "Roblox client, mutex, and credential options" },
-  { id: "watchdog",  label: "Watchdog",   Icon: WatchIcon,     accent: "#34D399",
-    desc: "Auto-rejoin and session history settings" },
-  { id: "alerts",    label: "Alerts",     Icon: BellIcon,      accent: "#FBBF24",
-    desc: "Notifications, sounds, and Discord webhooks" },
-  { id: "developer", label: "Developer",  Icon: TerminalIcon,  accent: "#F87171",
-    desc: "Local web server API and endpoint permissions" },
+  { id: "app",       label: "app_tab",        Icon: SettingsIcon,  accent: "#A78BFA",
+    desc: "app_tab_desc" },
+  { id: "client",    label: "client_tab",     Icon: GamepadIcon,   accent: "#60A5FA",
+    desc: "client_tab_desc" },
+  { id: "watchdog",  label: "watchdog_tab",   Icon: WatchIcon,     accent: "#34D399",
+    desc: "watchdog_tab_desc" },
+  { id: "alerts",    label: "alerts_tab",     Icon: BellIcon,      accent: "#FBBF24",
+    desc: "alerts_tab_desc" },
+  { id: "developer", label: "developer_tab",  Icon: TerminalIcon,  accent: "#F87171",
+    desc: "developer_tab_desc" },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
 
 const APP_SECTIONS = [
   {
-    id: "app-options", Icon: SlidersIcon, title: "App Options", accent: "#A78BFA",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Check for updates on launch" desc="Automatically checks for a new version of Reiya every time you open the app."><ToggleSwitch value={s.CheckForUpdates} onChange={v => u("CheckForUpdates", v)} /></SettingRow>
-      <SettingRow label="Launch app on Windows startup" desc="Reiya will start automatically when you log into Windows."><ToggleSwitch value={s.RunOnStartup} onChange={v => u("RunOnStartup", v)} /></SettingRow>
-      <SettingRow label="Close to system tray instead of exiting" desc="When enabled, clicking × hides the window. Use the tray icon to reopen or quit."><ToggleSwitch value={s.MinimizeToTray} onChange={v => u("MinimizeToTray", v)} /></SettingRow>
-      <SettingRow label="Show account presence status" desc="Shows whether each account is currently online or in-game."><ToggleSwitch value={s.ShowAccountPresence} onChange={v => u("ShowAccountPresence", v)} /></SettingRow>
+    id: "app-options", Icon: SlidersIcon, title: "app_options", accent: "#A78BFA",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("check_for_updates")} desc={t("check_for_updates_desc")}><ToggleSwitch value={s.CheckForUpdates} onChange={v => u("CheckForUpdates", v)} /></SettingRow>
+      <SettingRow label={t("run_on_startup")} desc={t("run_on_startup_desc")}><ToggleSwitch value={s.RunOnStartup} onChange={v => u("RunOnStartup", v)} /></SettingRow>
+      <SettingRow label={t("minimize_to_tray")} desc={t("minimize_to_tray_desc")}><ToggleSwitch value={s.MinimizeToTray} onChange={v => u("MinimizeToTray", v)} /></SettingRow>
+      <SettingRow label={t("show_presence")} desc={t("show_presence_desc")}><ToggleSwitch value={s.ShowAccountPresence} onChange={v => u("ShowAccountPresence", v)} /></SettingRow>
     </>),
   },
   {
-    id: "optimization", Icon: ZapIcon, title: "Client Optimization", accent: "#34D399",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Unlock FPS Limit" desc="Removes the default 60fps cap via FastFlag injection"><ToggleSwitch value={s.UnlockFps} onChange={v => u("UnlockFps", v)} /></SettingRow>
-      <SettingRow label="Use custom client settings override" desc="Applies ClientAppSettings.json on each launch"><ToggleSwitch value={s.UseCustomSettings} onChange={v => u("UseCustomSettings", v)} /></SettingRow>
-      <SettingRow label="Max FPS Limit" desc="Target framerate when FPS unlock is active"><NumberInput value={s.MaxFps} onChange={v => u("MaxFps", v)} /></SettingRow>
+    id: "optimization", Icon: ZapIcon, title: "client_opt", accent: "#34D399",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("unlock_fps")} desc={t("unlock_fps_desc")}><ToggleSwitch value={s.UnlockFps} onChange={v => u("UnlockFps", v)} /></SettingRow>
+      <SettingRow label={t("custom_client_settings")} desc={t("custom_client_settings_desc")}><ToggleSwitch value={s.UseCustomSettings} onChange={v => u("UseCustomSettings", v)} /></SettingRow>
+      <SettingRow label={t("max_fps_limit")} desc={t("max_fps_limit_desc")}><NumberInput value={s.MaxFps} onChange={v => u("MaxFps", v)} /></SettingRow>
     </>),
   },
   {
-    id: "limits", Icon: ClockIcon, title: "Limits & Delays", accent: "#FBBF24",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Launch Delay (seconds)" desc="Wait time between successive account launches"><NumberInput value={s.LaunchDelay} onChange={v => u("LaunchDelay", v)} /></SettingRow>
-      <SettingRow label="Global Launch Cooldown (s)" desc="Minimum gap between any two launches globally"><NumberInput value={s.GlobalLaunchCooldownSeconds} onChange={v => u("GlobalLaunchCooldownSeconds", v)} /></SettingRow>
-      <SettingRow label="Daily Play Goal (minutes)" desc="Target play time shown on the dashboard"><NumberInput value={s.DailyPlayGoalMinutes} onChange={v => u("DailyPlayGoalMinutes", v)} /></SettingRow>
+    id: "limits", Icon: ClockIcon, title: "limits_delays", accent: "#FBBF24",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("launch_delay")} desc={t("launch_delay_desc")}><NumberInput value={s.LaunchDelay} onChange={v => u("LaunchDelay", v)} /></SettingRow>
+      <SettingRow label={t("global_cooldown")} desc={t("global_cooldown_desc")}><NumberInput value={s.GlobalLaunchCooldownSeconds} onChange={v => u("GlobalLaunchCooldownSeconds", v)} /></SettingRow>
+      <SettingRow label={t("daily_play_goal")} desc={t("daily_play_goal_desc")}><NumberInput value={s.DailyPlayGoalMinutes} onChange={v => u("DailyPlayGoalMinutes", v)} /></SettingRow>
     </>),
   },
   {
-    id: "ui", Icon: LayoutIcon, title: "UI Preferences", accent: "#60A5FA",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Language" desc="Choose the display language for the app.">
+    id: "ui", Icon: LayoutIcon, title: "ui_pref", accent: "#60A5FA",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("lang_label")} desc={t("lang_label_desc")}>
         <SelectInput value={s.Language ?? "en"} onChange={v => u("Language", v)} options={LANGUAGES} />
       </SettingRow>
-      <SettingRow label="Max Recent Games limit" desc="How many recent games to show in the launcher"><NumberInput value={s.MaxRecentGames} onChange={v => u("MaxRecentGames", v)} /></SettingRow>
-      <SettingRow label="Region Format" desc="Template for displaying player location"><TextInput value={s.RegionFormat} onChange={v => u("RegionFormat", v)} placeholder="<city>, <countryCode>" /></SettingRow>
-      <SettingRow label="Presence Refresh (sec)" desc="How often to re-fetch online presence data"><NumberInput value={s.PresenceRefreshInterval} onChange={v => u("PresenceRefreshInterval", v)} /></SettingRow>
+      <SettingRow label={t("max_recent_games")} desc={t("max_recent_games_desc")}><NumberInput value={s.MaxRecentGames} onChange={v => u("MaxRecentGames", v)} /></SettingRow>
+      <SettingRow label={t("region_format")} desc={t("region_format_desc")}><TextInput value={s.RegionFormat} onChange={v => u("RegionFormat", v)} placeholder="<city>, <countryCode>" /></SettingRow>
+      <SettingRow label={t("presence_refresh")} desc={t("presence_refresh_desc")}><NumberInput value={s.PresenceRefreshInterval} onChange={v => u("PresenceRefreshInterval", v)} /></SettingRow>
     </>),
   },
 ];
 
 const CLIENT_SECTIONS = [
   {
-    id: "mutex", Icon: GamepadIcon, title: "Mutex & Multi-Instance", accent: "#60A5FA",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Enable Multi-Instance" desc="Bypasses the Roblox singleton mutex lock"><ToggleSwitch value={s.MultiRoblox} onChange={v => u("MultiRoblox", v)} /></SettingRow>
-      <SettingRow label="Use Bootstrapper to launch" desc="Routes launches through the Reiya bootstrapper"><ToggleSwitch value={s.UseBootstrapperLaunch} onChange={v => u("UseBootstrapperLaunch", v)} /></SettingRow>
-      <SettingRow label="Shuffle lowest player count server" desc="Joins a low-population server automatically"><ToggleSwitch value={s.ShuffleLowestServer} onChange={v => u("ShuffleLowestServer", v)} /></SettingRow>
+    id: "mutex", Icon: GamepadIcon, title: "mutex_multi", accent: "#60A5FA",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("enable_multi_instance")} desc={t("enable_multi_instance_desc")}><ToggleSwitch value={s.MultiRoblox} onChange={v => u("MultiRoblox", v)} /></SettingRow>
+      <SettingRow label={t("use_bootstrapper_launch")} desc={t("use_bootstrapper_launch_desc")}><ToggleSwitch value={s.UseBootstrapperLaunch} onChange={v => u("UseBootstrapperLaunch", v)} /></SettingRow>
+      <SettingRow label={t("shuffle_lowest_server")} desc={t("shuffle_lowest_server_desc")}><ToggleSwitch value={s.ShuffleLowestServer} onChange={v => u("ShuffleLowestServer", v)} /></SettingRow>
     </>),
   },
   {
-    id: "credentials", Icon: KeyIcon, title: "Credential Options", accent: "#34D399",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Save account passwords" desc="Stores user:pass alongside the session cookie"><ToggleSwitch value={s.SavePasswords} onChange={v => u("SavePasswords", v)} /></SettingRow>
-      <SettingRow label="Clipboard cookie auto-detection" desc="Watches clipboard for .ROBLOSECURITY values"><ToggleSwitch value={s.ClipboardCookieDetect} onChange={v => u("ClipboardCookieDetect", v)} /></SettingRow>
-      <SettingRow label="Auto-refresh expired cookies" desc="Re-authenticates cookies in the background"><ToggleSwitch value={s.AutoRefreshCookies} onChange={v => u("AutoRefreshCookies", v)} /></SettingRow>
+    id: "credentials", Icon: KeyIcon, title: "credentials_opt", accent: "#34D399",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("save_account_passwords")} desc={t("save_account_passwords_desc")}><ToggleSwitch value={s.SavePasswords} onChange={v => u("SavePasswords", v)} /></SettingRow>
+      <SettingRow label={t("clipboard_cookie_detection")} desc={t("clipboard_cookie_detection_desc")}><ToggleSwitch value={s.ClipboardCookieDetect} onChange={v => u("ClipboardCookieDetect", v)} /></SettingRow>
+      <SettingRow label={t("auto_refresh_cookies")} desc={t("auto_refresh_cookies_desc")}><ToggleSwitch value={s.AutoRefreshCookies} onChange={v => u("AutoRefreshCookies", v)} /></SettingRow>
     </>),
   },
   {
-    id: "health", Icon: ActivityIcon, title: "Health Monitoring", accent: "#F87171",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Cookie Health Monitor" desc="Background task that periodically validates cookies"><ToggleSwitch value={s.CookieHealthMonitorEnabled} onChange={v => u("CookieHealthMonitorEnabled", v)} /></SettingRow>
-      <SettingRow label="Cookie check interval (min)" desc="How often the health monitor runs its checks"><NumberInput value={s.CookieHealthIntervalMinutes} onChange={v => u("CookieHealthIntervalMinutes", v)} /></SettingRow>
-      <SettingRow label="Auto-Daily Backup" desc="Creates a daily snapshot of your accounts file"><ToggleSwitch value={s.AutoDailyBackup} onChange={v => u("AutoDailyBackup", v)} /></SettingRow>
+    id: "health", Icon: ActivityIcon, title: "health_monitoring", accent: "#F87171",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("cookie_health_monitor")} desc={t("cookie_health_monitor_desc")}><ToggleSwitch value={s.CookieHealthMonitorEnabled} onChange={v => u("CookieHealthMonitorEnabled", v)} /></SettingRow>
+      <SettingRow label={t("cookie_check_interval")} desc={t("cookie_check_interval_desc")}><NumberInput value={s.CookieHealthIntervalMinutes} onChange={v => u("CookieHealthIntervalMinutes", v)} /></SettingRow>
+      <SettingRow label={t("auto_daily_backup")} desc={t("auto_daily_backup_desc")}><ToggleSwitch value={s.AutoDailyBackup} onChange={v => u("AutoDailyBackup", v)} /></SettingRow>
     </>),
   },
 ];
 
 const WATCHDOG_SECTIONS = [
   {
-    id: "rejoin", Icon: WatchIcon, title: "Auto-Rejoin Watchdog", accent: "#34D399",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Enable Auto-Rejoin" desc="Restarts disconnected Roblox sessions automatically"><ToggleSwitch value={s.AutoRejoinEnabled} onChange={v => u("AutoRejoinEnabled", v)} /></SettingRow>
-      <SettingRow label="Rejoin Delay (seconds)" desc="Wait before attempting to rejoin after disconnect"><NumberInput value={s.AutoRejoinDelaySeconds} onChange={v => u("AutoRejoinDelaySeconds", v)} /></SettingRow>
-      <SettingRow label="Max Rejoin Attempts" desc="Stop retrying after this many failed rejoins"><NumberInput value={s.AutoRejoinMaxAttempts} onChange={v => u("AutoRejoinMaxAttempts", v)} /></SettingRow>
+    id: "rejoin", Icon: WatchIcon, title: "rejoin_watchdog", accent: "#34D399",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("enable_auto_rejoin")} desc={t("enable_auto_rejoin_desc")}><ToggleSwitch value={s.AutoRejoinEnabled} onChange={v => u("AutoRejoinEnabled", v)} /></SettingRow>
+      <SettingRow label={t("rejoin_delay_sec")} desc={t("rejoin_delay_sec_desc")}><NumberInput value={s.AutoRejoinDelaySeconds} onChange={v => u("AutoRejoinDelaySeconds", v)} /></SettingRow>
+      <SettingRow label={t("max_rejoin_attempts")} desc={t("max_rejoin_attempts_desc")}><NumberInput value={s.AutoRejoinMaxAttempts} onChange={v => u("AutoRejoinMaxAttempts", v)} /></SettingRow>
     </>),
   },
   {
-    id: "history", Icon: DatabaseIcon, title: "Session History", accent: "#60A5FA",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Record session activity" desc="Saves launch time, duration, and game per session"><ToggleSwitch value={s.SessionHistoryEnabled} onChange={v => u("SessionHistoryEnabled", v)} /></SettingRow>
-      <SettingRow label="Max history records" desc="Oldest records are pruned beyond this limit"><NumberInput value={s.SessionHistoryMaxRecords} onChange={v => u("SessionHistoryMaxRecords", v)} /></SettingRow>
+    id: "history", Icon: DatabaseIcon, title: "session_history", accent: "#60A5FA",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("record_session_activity")} desc={t("record_session_activity_desc")}><ToggleSwitch value={s.SessionHistoryEnabled} onChange={v => u("SessionHistoryEnabled", v)} /></SettingRow>
+      <SettingRow label={t("max_history_records")} desc={t("max_history_records_desc")}><NumberInput value={s.SessionHistoryMaxRecords} onChange={v => u("SessionHistoryMaxRecords", v)} /></SettingRow>
     </>),
   },
 ];
 
 const ALERTS_SECTIONS = [
   {
-    id: "notifications", Icon: BellIcon, title: "Notifications & Alerts", accent: "#FBBF24",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Toast notifications" desc="System tray popup alerts for key events"><ToggleSwitch value={s.ToastNotificationsEnabled} onChange={v => u("ToastNotificationsEnabled", v)} /></SettingRow>
-      <SettingRow label="Audio alert sounds" desc="Plays a sound when sessions start or disconnect"><ToggleSwitch value={s.SoundAlertsEnabled} onChange={v => u("SoundAlertsEnabled", v)} /></SettingRow>
-      <SettingRow label="Warn on disconnect" desc="Alert when any account session is lost"><ToggleSwitch value={s.DisconnectAlertEnabled} onChange={v => u("DisconnectAlertEnabled", v)} /></SettingRow>
-      <SettingRow label="Notify on launch success" desc="Confirms when a launch completes without errors"><ToggleSwitch value={s.LaunchSuccessAlert} onChange={v => u("LaunchSuccessAlert", v)} /></SettingRow>
+    id: "notifications", Icon: BellIcon, title: "alerts_notifications", accent: "#FBBF24",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("toast_notifications")} desc={t("toast_notifications_desc")}><ToggleSwitch value={s.ToastNotificationsEnabled} onChange={v => u("ToastNotificationsEnabled", v)} /></SettingRow>
+      <SettingRow label={t("audio_alert_sounds")} desc={t("audio_alert_sounds_desc")}><ToggleSwitch value={s.SoundAlertsEnabled} onChange={v => u("SoundAlertsEnabled", v)} /></SettingRow>
+      <SettingRow label={t("warn_on_disconnect")} desc={t("warn_on_disconnect_desc")}><ToggleSwitch value={s.DisconnectAlertEnabled} onChange={v => u("DisconnectAlertEnabled", v)} /></SettingRow>
+      <SettingRow label={t("notify_launch_success")} desc={t("notify_launch_success_desc")}><ToggleSwitch value={s.LaunchSuccessAlert} onChange={v => u("LaunchSuccessAlert", v)} /></SettingRow>
     </>),
   },
   {
-    id: "discord", Icon: MessageSquareIcon, title: "Discord Webhook", accent: "#818CF8",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Webhook URL" desc="POST target for disconnect and crash events">
+    id: "discord", Icon: MessageSquareIcon, title: "discord_webhook", accent: "#818CF8",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("webhook_url")} desc={t("webhook_url_desc")}>
         <TextInput value={s.DiscordWebhookUrl} onChange={v => u("DiscordWebhookUrl", v)} placeholder="https://discord.com/api/webhooks/..." wide />
       </SettingRow>
     </>),
@@ -130,26 +131,26 @@ const ALERTS_SECTIONS = [
 
 const DEVELOPER_SECTIONS = [
   {
-    id: "webserver", Icon: ServerIcon, title: "Local Web Server", accent: "#34D399",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Developer mode" desc="Unlocks advanced override options"><ToggleSwitch value={s.DeveloperModeEnabled} onChange={v => u("DeveloperModeEnabled", v)} /></SettingRow>
-      <SettingRow label="Enable Web Server API" desc="Starts a local HTTP server for remote control"><ToggleSwitch value={s.WebServerEnabled} onChange={v => u("WebServerEnabled", v)} /></SettingRow>
-      <SettingRow label="Web Server Port" desc="Port the local API listens on"><NumberInput value={s.WebServerPort} onChange={v => u("WebServerPort", v)} /></SettingRow>
-      <SettingRow label="Require API password" desc="Adds authentication to all API requests"><ToggleSwitch value={s.RequirePassword} onChange={v => u("RequirePassword", v)} /></SettingRow>
-      <SettingRow label="API access key" desc="Password required for authenticated requests">
+    id: "webserver", Icon: ServerIcon, title: "local_webserver", accent: "#34D399",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("developer_mode")} desc={t("developer_mode_desc")}><ToggleSwitch value={s.DeveloperModeEnabled} onChange={v => u("DeveloperModeEnabled", v)} /></SettingRow>
+      <SettingRow label={t("enable_web_server")} desc={t("enable_web_server_desc")}><ToggleSwitch value={s.WebServerEnabled} onChange={v => u("WebServerEnabled", v)} /></SettingRow>
+      <SettingRow label={t("web_server_port")} desc={t("web_server_port_desc")}><NumberInput value={s.WebServerPort} onChange={v => u("WebServerPort", v)} /></SettingRow>
+      <SettingRow label={t("require_api_password")} desc={t("require_api_password_desc")}><ToggleSwitch value={s.RequirePassword} onChange={v => u("RequirePassword", v)} /></SettingRow>
+      <SettingRow label={t("api_access_key")} desc={t("api_access_key_desc")}>
         <TextInput value={s.WebServerPassword} onChange={v => u("WebServerPassword", v)} placeholder="Leave blank for open access" />
       </SettingRow>
     </>),
   },
   {
-    id: "permissions", Icon: ShieldIcon, title: "Endpoint Permissions", accent: "#F87171",
-    fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Allow GET cookie" desc="Remote callers can read .ROBLOSECURITY values"><ToggleSwitch value={s.AllowGetCookie} onChange={v => u("AllowGetCookie", v)} /></SettingRow>
-      <SettingRow label="Allow GET accounts" desc="Remote callers can list all managed accounts"><ToggleSwitch value={s.AllowGetAccounts} onChange={v => u("AllowGetAccounts", v)} /></SettingRow>
-      <SettingRow label="Allow remote launch" desc="Remote callers can trigger account launches"><ToggleSwitch value={s.AllowLaunchAccount} onChange={v => u("AllowLaunchAccount", v)} /></SettingRow>
-      <SettingRow label="Allow account edits" desc="Remote callers can modify account configuration"><ToggleSwitch value={s.AllowAccountModifications} onChange={v => u("AllowAccountModifications", v)} /></SettingRow>
-      <SettingRow label="Disable remote image loading" desc="Skips avatar/thumbnail fetches to save bandwidth"><ToggleSwitch value={s.DisableImageLoading} onChange={v => u("DisableImageLoading", v)} /></SettingRow>
-      <SettingRow label="Allow LAN / WAN connections" desc="Accepts connections from outside localhost"><ToggleSwitch value={s.AllowExternalConnections} onChange={v => u("AllowExternalConnections", v)} /></SettingRow>
+    id: "permissions", Icon: ShieldIcon, title: "endpoint_permissions", accent: "#F87171",
+    fields: (s: any, u: (k: string, v: any) => void, t: any) => (<>
+      <SettingRow label={t("allow_get_cookie")} desc={t("allow_get_cookie_desc")}><ToggleSwitch value={s.AllowGetCookie} onChange={v => u("AllowGetCookie", v)} /></SettingRow>
+      <SettingRow label={t("allow_get_accounts")} desc={t("allow_get_accounts_desc")}><ToggleSwitch value={s.AllowGetAccounts} onChange={v => u("AllowGetAccounts", v)} /></SettingRow>
+      <SettingRow label={t("allow_remote_launch")} desc={t("allow_remote_launch_desc")}><ToggleSwitch value={s.AllowLaunchAccount} onChange={v => u("AllowLaunchAccount", v)} /></SettingRow>
+      <SettingRow label={t("allow_account_edits")} desc={t("allow_account_edits_desc")}><ToggleSwitch value={s.AllowAccountModifications} onChange={v => u("AllowAccountModifications", v)} /></SettingRow>
+      <SettingRow label={t("disable_remote_image")} desc={t("disable_remote_image_desc")}><ToggleSwitch value={s.DisableImageLoading} onChange={v => u("DisableImageLoading", v)} /></SettingRow>
+      <SettingRow label={t("allow_lan_wan")} desc={t("allow_lan_wan_desc")}><ToggleSwitch value={s.AllowExternalConnections} onChange={v => u("AllowExternalConnections", v)} /></SettingRow>
     </>),
   },
 ];
@@ -161,14 +162,25 @@ const SECTIONS_BY_TAB: Record<TabId, any[]> = {
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { t, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState<TabId>("app");
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState("");
+  const [originalLanguage, setOriginalLanguage] = useState("en");
+  const isSaved = useRef(false);
 
   useEffect(() => { loadSettings(); }, []);
+
+  useEffect(() => {
+    return () => {
+      if (!isSaved.current) {
+        setLanguage(originalLanguage);
+      }
+    };
+  }, [originalLanguage]);
 
   const loadSettings = async () => {
     try {
@@ -196,6 +208,8 @@ export default function Settings() {
         AllowLaunchAccount: true, AllowAccountModifications: true,
         DisableImageLoading: false, AllowExternalConnections: false,
       };
+      const loadedLanguage = data?.Language || "en";
+      setOriginalLanguage(loadedLanguage);
       setSettings({ ...defaults, ...data });
     } catch (e) { setError(String(e)); } finally { setLoading(false); }
   };
@@ -204,19 +218,27 @@ export default function Settings() {
     setSaving(true); setError(""); setSaveSuccess(false);
     try {
       await invoke("save_settings", { settings });
+      isSaved.current = true;
+      setOriginalLanguage(settings.Language || "en");
+      isSaved.current = false;
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) { setError(String(e)); } finally { setSaving(false); }
   };
 
-  const updateField = (key: string, value: any) => setSettings((prev: any) => ({ ...prev, [key]: value }));
+  const updateField = (key: string, value: any) => {
+    setSettings((prev: any) => ({ ...prev, [key]: value }));
+    if (key === "Language") {
+      setLanguage(value);
+    }
+  };
 
   if (loading) {
     return (
       <div style={{ height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
         <div style={{ color: "var(--t2)", display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
           <LoaderIcon size={16} style={{ animation: "spin 1s linear infinite" }} />
-          Loading configuration…
+          {t("loading_config")}
         </div>
       </div>
     );
@@ -257,7 +279,7 @@ export default function Settings() {
                 onMouseLeave={e => { if (!active) e.currentTarget.style.color = "var(--t3)"; }}
               >
                 <Icon size={13} color={active ? accent : "currentColor"} />
-                {label}
+                {t(label)}
               </button>
             );
           })}
@@ -275,7 +297,7 @@ export default function Settings() {
           onMouseEnter={e => e.currentTarget.style.color = "var(--t2)"}
           onMouseLeave={e => e.currentTarget.style.color = "var(--t3)"}
         >
-          <ChevronLeftIcon size={12} /> Back
+          <ChevronLeftIcon size={12} /> {t("back_btn")}
         </button>
       </div>
 
@@ -298,9 +320,9 @@ export default function Settings() {
             </div>
             <div>
               <div style={{ fontSize: 17, fontWeight: 900, color: "var(--t1)", letterSpacing: "-0.3px" }}>
-                {activeTabDef.label} Settings
+                {t(activeTabDef.label)} {t("settings")}
               </div>
-              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{activeTabDef.desc}</div>
+              <div style={{ fontSize: 11, color: "var(--t3)", marginTop: 2 }}>{t(activeTabDef.desc)}</div>
             </div>
           </div>
 
@@ -341,12 +363,12 @@ export default function Settings() {
                 }}>
                   <section.Icon size={12} color={section.accent} />
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em" }}>{section.title}</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em" }}>{t(section.title)}</span>
               </div>
 
               {/* Fields */}
               <div style={{ padding: "4px 18px" }}>
-                {section.fields(settings, updateField)}
+                {section.fields(settings, updateField, t)}
               </div>
             </div>
           ))}
@@ -364,7 +386,7 @@ export default function Settings() {
         <div style={{ minHeight: 20 }}>
           {saveSuccess && (
             <span style={{ color: "var(--green)", fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-              <CheckIcon size={12} color="var(--green)" /> Settings saved successfully.
+              <CheckIcon size={12} color="var(--green)" /> {t("settings_saved_success")}
             </span>
           )}
         </div>
@@ -372,14 +394,14 @@ export default function Settings() {
           <button onClick={() => navigate("/")} disabled={saving} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
             onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
             onMouseLeave={e => { e.currentTarget.style.color = "var(--t2)"; e.currentTarget.style.background = "transparent"; }}>
-            Cancel
+            {t("cancel")}
           </button>
           <button onClick={handleSave} disabled={saving} style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: saving ? "rgba(232,232,232,0.08)" : "rgba(232,232,232,0.9)", color: saving ? "var(--t3)" : "#0a0a0a", fontSize: 12, fontWeight: 800, cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 2px 12px rgba(232,232,232,0.1)", transition: "all .15s", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => { if (!saving) e.currentTarget.style.filter = "brightness(1.06)"; }}
             onMouseLeave={e => { if (!saving) e.currentTarget.style.filter = "none"; }}>
             {saving
-              ? <><LoaderIcon size={12} style={{ animation: "spin 1s linear infinite" }} /> Saving…</>
-              : <><CheckIcon size={12} color="#0a0a0a" /> Save Settings</>
+              ? <><LoaderIcon size={12} style={{ animation: "spin 1s linear infinite" }} /> {t("saving_settings_status")}</>
+              : <><CheckIcon size={12} color="#0a0a0a" /> {t("save_settings")}</>
             }
           </button>
         </div>

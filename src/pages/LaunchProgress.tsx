@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useLanguage } from "../context/LanguageContext";
 
 interface LaunchProgressEvent {
   status: string;
@@ -8,6 +9,7 @@ interface LaunchProgressEvent {
 }
 
 export default function LaunchProgress() {
+  const { t } = useLanguage();
   const [status, setStatus] = useState("Initializing launcher...");
   const [percent, setPercent] = useState(0);
 
@@ -77,8 +79,8 @@ export default function LaunchProgress() {
           zIndex: 1,
         }}
       >
-        <span data-tauri-drag-region>Channel: production</span>
-        <span data-tauri-drag-region>Launcher: Reiya Bootstrapper</span>
+        <span data-tauri-drag-region>{t("channel")}: production</span>
+        <span data-tauri-drag-region>{t("launcher")}: Reiya Bootstrapper</span>
       </div>
 
       {/* Main Content (Logo + Pulse Effect) */}
@@ -156,7 +158,7 @@ export default function LaunchProgress() {
             padding: "0 4px",
           }}
         >
-          <span style={{ fontWeight: 600, color: "var(--t1)" }}>{status}</span>
+          <span style={{ fontWeight: 600, color: "var(--t1)" }}>{status === "Initializing launcher..." ? t("initializing_launcher") : status}</span>
           <span>{percent}%</span>
         </div>
 
@@ -210,7 +212,7 @@ export default function LaunchProgress() {
             e.currentTarget.style.background = "var(--surface-2)";
           }}
         >
-          Cancel
+          {t("cancel")}
         </button>
       </div>
 

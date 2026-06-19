@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useMemo } from "react";
+﻿import { useLanguage } from "../context/LanguageContext";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -47,10 +48,10 @@ interface FavoriteGame {
 
 /* â”€â”€ Tab definitions â”€â”€ */
 const TABS = [
-  { id: "servers",   label: "Servers",   Icon: ServerIcon   },
-  { id: "games",     label: "Games",     Icon: GamepadIcon  },
-  { id: "history",   label: "History",   Icon: ClockIcon    },
-  { id: "favorites", label: "Favorites", Icon: StarIcon     },
+  { id: "servers",   label: "servers",   Icon: ServerIcon   },
+  { id: "games",     label: "games",     Icon: GamepadIcon  },
+  { id: "history",   label: "history",   Icon: ClockIcon    },
+  { id: "favorites", label: "favorites_tab", Icon: StarIcon     },
 ] as const;
 type TabId = typeof TABS[number]["id"];
 
@@ -64,6 +65,7 @@ function pingColor(ping: string): string {
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 export default function Utilities() {
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -230,7 +232,7 @@ export default function Utilities() {
     try {
       const results = await invoke<RobloxGameResult[]>("search_roblox_games", { keyword: gameQuery });
       setGames(results);
-      if (results.length === 0) setGameError("No games found matching search.");
+      if (results.length === 0) setGameError(t("no_accounts_match"));
     } catch (e) { setGameError(String(e)); }
     finally { setLoadingGames(false); }
   };
@@ -287,10 +289,10 @@ export default function Utilities() {
   }, [sessionHistory]);
 
   const selectionStatusText = useMemo(() => {
-    if (!selectedItem) return "No item selected";
-    if (selectedItem.type === "server") return `Server Â· ${selectedItem.jobId?.slice(0, 20)}...`;
-    return `${selectedItem.name} Â· PID ${selectedItem.placeId}`;
-  }, [selectedItem]);
+    if (!selectedItem) return t("no_item_selected");
+    if (selectedItem.type === "server") return `Server · ${selectedItem.jobId?.slice(0, 20)}...`;
+    return `${selectedItem.name} · PID ${selectedItem.placeId}`;
+  }, [selectedItem, t]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a", overflow: "hidden" }}>
@@ -306,7 +308,7 @@ export default function Utilities() {
       }}>
         <div>
           <h1 style={{ fontSize: 14, fontWeight: 900, color: "var(--t1)", letterSpacing: "0.06em", margin: 0 }}>
-            GAME BROWSER & UTILITIES
+            {t("game_browser_title")}
           </h1>
           <p style={{ fontSize: 10, fontWeight: 700, color: "var(--t3)", letterSpacing: "0.1em", marginTop: 3 }}>
             SEARCH GAMES Â· BROWSE SERVERS Â· LAUNCH CUSTOM PLACES
@@ -327,7 +329,7 @@ export default function Utilities() {
               boxShadow: multiInstanceActive ? "0 0 5px var(--green)" : "0 0 5px var(--red)",
             }} />
             <span style={{ fontSize: 10, fontWeight: 700, color: "var(--t2)" }}>
-              Multi-Instance: {multiInstanceActive ? "Active" : "Inactive"}
+              {t("multi_instance_label")}: {multiInstanceActive ? t("active") : t("disabled")}
             </span>
           </div>
 
@@ -343,7 +345,7 @@ export default function Utilities() {
             onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.15)"}
             onMouseLeave={e => e.currentTarget.style.filter = "none"}
           >
-            {multiInstanceActive ? "Disable" : "Enable"}
+            {multiInstanceActive ? t("disable_btn") : t("enable_btn")}
           </button>
 
           <button
@@ -382,7 +384,7 @@ export default function Utilities() {
                 style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 16px" }}
               >
                 <Icon size={12} color={active ? "var(--amber)" : "var(--t3)"} />
-                <span style={{ fontSize: 11, fontWeight: 700 }}>{label.toUpperCase()}</span>
+                <span style={{ fontSize: 11, fontWeight: 700 }}>{t(label).toUpperCase()}</span>
               </button>
             );
           })}
@@ -406,7 +408,7 @@ export default function Utilities() {
                   onChange={e => setServerQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleSearchServers(); }}
                   disabled={loadingServers}
-                  placeholder="Search Place ID or Game Title..."
+                  placeholder={t("search_place_placeholder")}
                   style={{ flex: 1, background: "none", border: "none", outline: "none", color: "var(--t1)", fontSize: 12, padding: "6px 4px" }}
                 />
                 <button
@@ -420,7 +422,7 @@ export default function Utilities() {
                   }}
                 >
                   {loadingServers ? <LoaderIcon size={12} style={{ animation: "spin 1s linear infinite" }} /> : <SearchIcon size={12} />}
-                  {loadingServers ? "Searching..." : "Search"}
+                  {loadingServers ? t("scanning") : t("scan")}
                 </button>
                 <button
                   onClick={handleSearchServers}
@@ -441,8 +443,7 @@ export default function Utilities() {
                   fontSize: 10.5, color: "var(--t2)", fontWeight: 600,
                 }}>
                   <ActivityIcon size={12} color="var(--amber)" />
-                  <span>
-                    <span style={{ color: "var(--amber)", fontWeight: 800 }}>{servers.length}</span> active server{servers.length !== 1 ? "s" : ""} for Place ID{" "}
+                  <span><span style={{ color: "var(--amber)", fontWeight: 800 }}>{servers.length}</span> {t("resolved_server_active_suffix")} {" "}
                     <span style={{ color: "var(--amber)", fontFamily: "monospace" }}>{resolvedServerGame.place_id}</span>
                     {resolvedServerGame.name !== `Place ${resolvedServerGame.place_id}` && ` (${resolvedServerGame.name})`}
                   </span>
@@ -458,19 +459,19 @@ export default function Utilities() {
                 {loadingServers ? (
                   <div style={{ padding: 50, textAlign: "center", color: "var(--t2)", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                     <LoaderIcon size={14} style={{ animation: "spin 1s linear infinite" }} />
-                    <span style={{ fontSize: 12 }}>Loading active Roblox instances...</span>
+                    <span style={{ fontSize: 12 }}>{t("loading_active_servers")}</span>
                   </div>
                 ) : serverError ? (
                   <div style={{ padding: 30, textAlign: "center", color: "var(--red)", fontSize: 12 }}>{serverError}</div>
                 ) : servers.length === 0 ? (
                   <div style={{ padding: 40, textAlign: "center", color: "var(--t3)", fontSize: 12 }}>
-                    No active servers loaded. Search a place ID above.
+                    {t("no_active_servers_loaded")}
                   </div>
                 ) : (
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                     <thead>
                       <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", textAlign: "left" }}>
-                        {["JOB ID (GUID)", "PLAYERS", "PING", "FPS"].map((h, i) => (
+                        {[t("job_id_guid_header"), t("players_header"), t("ping_header"), t("fps_header")].map((h, i) => (
                           <th key={h} style={{
                             padding: "10px 16px", color: "var(--t3)", fontWeight: 800, fontSize: 9.5,
                             letterSpacing: "0.1em",
@@ -533,7 +534,7 @@ export default function Utilities() {
                   onChange={e => setGameQuery(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") handleSearchGames(); }}
                   disabled={loadingGames}
-                  placeholder="Search Roblox experiences database..."
+                  placeholder={t("search_games_placeholder")}
                   style={{ flex: 1, background: "none", border: "none", outline: "none", color: "var(--t1)", fontSize: 12, padding: "6px 4px" }}
                 />
                 <button
@@ -555,7 +556,7 @@ export default function Utilities() {
                 {loadingGames ? (
                   <div style={{ padding: 50, textAlign: "center", color: "var(--t2)", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
                     <LoaderIcon size={14} style={{ animation: "spin 1s linear infinite" }} />
-                    <span style={{ fontSize: 12 }}>Searching Roblox game directory...</span>
+                    <span style={{ fontSize: 12 }}>{t("scanning")}</span>
                   </div>
                 ) : gameError ? (
                   <div style={{ padding: 30, textAlign: "center", color: "var(--red)", fontSize: 12 }}>{gameError}</div>
@@ -590,7 +591,7 @@ export default function Utilities() {
                   </div>
                 ) : games.length === 0 ? (
                   <div style={{ padding: 40, textAlign: "center", color: "var(--t3)", fontSize: 12 }}>
-                    Type a keyword and search to find games.
+                    {t("type_keyword_to_search")}
                   </div>
                 ) : (
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, padding: "4px 0" }}>
@@ -624,10 +625,10 @@ export default function Utilities() {
           {activeTab === "history" && (
             <div className="scroll" style={{ flex: 1, overflowY: "auto" }}>
               {historyGames.length === 0 ? (
-                <div style={{ padding: 40, textAlign: "center", color: "var(--t3)", fontSize: 12 }}>No recently launched games.</div>
+                <div style={{ padding: 40, textAlign: "center", color: "var(--t3)", fontSize: 12 }}>{t("no_recent_games")}</div>
               ) : (
                 <>
-                  <SectionLabel label="LAUNCH HISTORY" count={historyGames.length} />
+                  <SectionLabel label={t("recent_history").toUpperCase()} count={historyGames.length} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, padding: "8px 0" }}>
                     {historyGames.map(g => {
                       const isSelected = selectedItem?.type === "history" && selectedItem?.placeId === g.place_id;
@@ -661,11 +662,11 @@ export default function Utilities() {
             <div className="scroll" style={{ flex: 1, overflowY: "auto" }}>
               {favorites.length === 0 ? (
                 <div style={{ padding: 40, textAlign: "center", color: "var(--t3)", fontSize: 12 }}>
-                  No starred favorites. Star games in the Games tab to populate.
+                  {t("no_favorites_desc")}
                 </div>
               ) : (
                 <>
-                  <SectionLabel label="STARRED FAVORITES" count={favorites.length} />
+                  <SectionLabel label={t("starred_favorites_title")} count={favorites.length} />
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10, padding: "8px 0" }}>
                     {favorites.map(g => {
                       const isSelected = selectedItem?.type === "favorite" && selectedItem?.placeId === g.placeId;
@@ -730,7 +731,7 @@ export default function Utilities() {
             onMouseEnter={e => e.currentTarget.style.color = "var(--t1)"}
             onMouseLeave={e => e.currentTarget.style.color = "var(--t2)"}
           >
-            Cancel
+            {t("cancel")}
           </button>
           <button
             onClick={handleChooseAndGoHome}
@@ -752,7 +753,7 @@ export default function Utilities() {
             onMouseLeave={e => { if (selectedItem) e.currentTarget.style.filter = "none"; }}
           >
             <ChevronRightIcon size={13} color={selectedItem ? "#0a0a0a" : "var(--t3)"} />
-            Use Selected
+            {t("use_selected_btn")}
           </button>
         </div>
       </div>
@@ -760,12 +761,12 @@ export default function Utilities() {
       {/* â”€â”€ PRIVATE SERVER MODAL â”€â”€ */}
       {privateServerModal && (
         <Modal onClose={() => setPrivateServerModal(null)}>
-          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--t1)", marginBottom: 6 }}>Private Server Setup</div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--t1)", marginBottom: 6 }}>{t("private_server_setup_title")}</div>
           <div style={{ fontSize: 11, color: "var(--t2)", marginBottom: 16, lineHeight: 1.5 }}>
-            Configure private server for <span style={{ color: "var(--amber)", fontWeight: 700 }}>"{privateServerModal.name}"</span>
+            {t("configure_private_server_for")} <span style={{ color: "var(--amber)", fontWeight: 700 }}>"{privateServerModal.name}"</span>
           </div>
           <label style={{ fontSize: 9.5, color: "var(--t3)", fontWeight: 800, letterSpacing: "0.1em", display: "block", marginBottom: 8 }}>
-            PRIVATE SERVER LINK OR ACCESS CODE
+            {t("private_server_link_or_access_code")}
           </label>
           <input
             type="text"
@@ -776,11 +777,11 @@ export default function Utilities() {
             style={{ width: "100%", padding: "9px 12px", marginBottom: 8 }}
           />
           <div style={{ fontSize: 9.5, color: "var(--t3)", lineHeight: 1.5, marginBottom: 20 }}>
-            Leave blank to clear the private server setting.
+            {t("private_server_clear_desc")}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <ModalBtn label="Cancel" onClick={() => setPrivateServerModal(null)} />
-            <ModalBtn label="Save Settings" onClick={handleSavePrivateServer} primary />
+            <ModalBtn label={t("cancel")} onClick={() => setPrivateServerModal(null)} />
+            <ModalBtn label={t("save_settings")} onClick={handleSavePrivateServer} primary />
           </div>
         </Modal>
       )}
@@ -788,13 +789,13 @@ export default function Utilities() {
       {/* â”€â”€ DELETE CONFIRM MODAL â”€â”€ */}
       {deleteConfirmModal && (
         <Modal onClose={() => setDeleteConfirmModal(null)}>
-          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--red)", marginBottom: 10 }}>Remove Game</div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: "var(--red)", marginBottom: 10 }}>{t("remove_game")}</div>
           <div style={{ fontSize: 12, color: "var(--t1)", lineHeight: 1.6, marginBottom: 22 }}>
-            Remove <span style={{ color: "var(--t1)", fontWeight: 700 }}>"{deleteConfirmModal.name}"</span> from recently played?
+            {t("remove_game_confirm_desc")}
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <ModalBtn label="Cancel" onClick={() => setDeleteConfirmModal(null)} />
-            <ModalBtn label="Remove" onClick={handleConfirmDeleteGame} danger />
+            <ModalBtn label={t("cancel")} onClick={() => setDeleteConfirmModal(null)} />
+            <ModalBtn label={t("remove_game").split(" ")[0]} onClick={handleConfirmDeleteGame} danger />
           </div>
         </Modal>
       )}
@@ -812,6 +813,7 @@ function GameCard({
   onSelect: () => void; onContextMenu: (e: React.MouseEvent) => void;
   onSearchServers: () => void; onToggleFav?: () => void; onDelete?: () => void; onRemoveFav?: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div
       onClick={onSelect}
@@ -857,21 +859,21 @@ function GameCard({
 
       {/* Actions */}
       <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-        <IconBtn title="Browse servers" onClick={e => { e.stopPropagation(); onSearchServers(); }} hoverColor="var(--amber)">
+        <IconBtn title={t("browse_servers_tooltip")} onClick={e => { e.stopPropagation(); onSearchServers(); }} hoverColor="var(--amber)">
           <SearchIcon size={12} />
         </IconBtn>
         {onToggleFav && (
-          <IconBtn title={isFav ? "Unfavorite" : "Favorite"} onClick={e => { e.stopPropagation(); onToggleFav(); }} hoverColor="var(--amber)">
+          <IconBtn title={isFav ? t("unfavorite") : t("favorite")} onClick={e => { e.stopPropagation(); onToggleFav(); }} hoverColor="var(--amber)">
             <StarIcon size={12} fill={isFav ? "var(--amber)" : "none"} color={isFav ? "var(--amber)" : "var(--t3)"} />
           </IconBtn>
         )}
         {onDelete && (
-          <IconBtn title="Remove" onClick={e => { e.stopPropagation(); onDelete(); }} hoverColor="var(--red)">
+          <IconBtn title={t("remove_game").split(" ")[0]} onClick={e => { e.stopPropagation(); onDelete(); }} hoverColor="var(--red)">
             <TrashIcon size={12} />
           </IconBtn>
         )}
         {onRemoveFav && (
-          <IconBtn title="Remove favorite" onClick={e => { e.stopPropagation(); onRemoveFav(); }} hoverColor="var(--red)">
+          <IconBtn title={t("remove_favorite_tooltip")} onClick={e => { e.stopPropagation(); onRemoveFav(); }} hoverColor="var(--red)">
             <XIcon size={12} />
           </IconBtn>
         )}

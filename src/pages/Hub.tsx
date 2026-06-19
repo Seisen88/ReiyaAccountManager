@@ -1,12 +1,13 @@
-﻿import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { CATALOG } from "../data/catalog";
+import { useLanguage } from "../context/LanguageContext";
 import {
   StarIcon, CheckIcon, SearchIcon, CopyIcon, TerminalIcon, ActivityIcon,
 } from "../components/Icons";
 
-/* â”€â”€ Types â”€â”€ */
+/* ── Types ── */
 interface Game {
   placeId: string;
   name: string;
@@ -31,8 +32,9 @@ const CAT_COLOR: Record<string, string> = {
 const CATEGORIES = ["All", "Anime", "RPG", "Shooter", "Simulator", "Strategy", "Tycoon"];
 type StatusFilter = "All" | "Supported" | "Discontinued";
 
-/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
+/* ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── ── */
 export default function Hub() {
+  const { t } = useLanguage();
   const [games, setGames] = useState<Game[]>(() =>
     CATALOG.map(g => ({ ...g, isFavorite: false as boolean }))
   );
@@ -79,7 +81,7 @@ export default function Hub() {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a" }}>
 
-      {/* â”€â”€ Header â”€â”€ */}
+      {/* ── Header ── */}
       <div style={{
         padding: "18px 24px 14px",
         borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -108,14 +110,14 @@ export default function Hub() {
               background: "rgba(52,211,153,0.1)", padding: "2px 8px",
               borderRadius: 99, letterSpacing: "0.1em",
               border: "1px solid rgba(52,211,153,0.2)",
-            }}>LIVE</span>
+            }}>{t("live").toUpperCase()}</span>
           </div>
 
           {/* Stat pills */}
           <div style={{ display: "flex", gap: 10 }}>
-            <StatPill value={String(CATALOG.length)} label="Total" />
-            <StatPill value={String(supported)} label="Supported" color="var(--green)" />
-            <StatPill value={String(favCount)} label="Favorites" color="var(--amber)" />
+            <StatPill value={String(CATALOG.length)} label={t("all")} />
+            <StatPill value={String(supported)} label={t("supported")} color="var(--green)" />
+            <StatPill value={String(favCount)} label={t("favorites_tab")} color="var(--amber)" />
           </div>
         </div>
 
@@ -136,7 +138,7 @@ export default function Hub() {
           <span style={{
             fontSize: 9, fontWeight: 800, letterSpacing: "0.1em",
             color: "var(--amber)", flexShrink: 0,
-          }}>EXECUTOR</span>
+          }}>{t("executor").toUpperCase()}</span>
           <code style={{
             flex: 1, fontSize: 10, color: "var(--t3)",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -156,8 +158,8 @@ export default function Hub() {
             onMouseLeave={e => { if (!execCopied) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
           >
             {execCopied
-              ? <><CheckIcon size={11} color="var(--green)" /><span>Copied!</span></>
-              : <><CopyIcon size={11} color="var(--t2)" /><span>Copy</span></>
+              ? <><CheckIcon size={11} color="var(--green)" /><span>{t("copied")}</span></>
+              : <><CopyIcon size={11} color="var(--t2)" /><span>{t("copy")}</span></>
             }
           </button>
         </div>
@@ -177,7 +179,7 @@ export default function Hub() {
                 borderRadius: 10, color: "var(--t1)", fontSize: 12, outline: "none",
                 transition: "border-color .15s",
               }}
-              placeholder="Search games..."
+              placeholder={t("search_games")}
               value={search}
               onChange={e => setSearch(e.target.value)}
               onFocus={e => e.currentTarget.style.borderColor = "rgba(232,232,232,0.4)"}
@@ -198,7 +200,7 @@ export default function Hub() {
             }}
           >
             <StarIcon size={11} fill={favOnly ? "var(--amber)" : "none"} color={favOnly ? "var(--amber)" : "var(--t3)"} />
-            Favorites
+            {t("favorites_tab")}
           </button>
 
           {/* Status segmented control */}
@@ -219,7 +221,7 @@ export default function Hub() {
                   border: "none", fontSize: 11, fontWeight: active ? 700 : 500,
                   cursor: "pointer", transition: "all .1s", whiteSpace: "nowrap",
                 }}>
-                  {s === "Supported" ? "Active" : s === "Discontinued" ? "Discontinued" : "All"}
+                  {s === "Supported" ? t("supported") : s === "Discontinued" ? t("discontinued") : t("all")}
                 </button>
               );
             })}
@@ -248,17 +250,17 @@ export default function Hub() {
                     flexShrink: 0,
                   }} />
                 )}
-                {cat}
+                {cat === "All" ? t("all") : cat}
               </button>
             );
           })}
           <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--t3)", fontWeight: 600 }}>
-            {visible.length} game{visible.length !== 1 ? "s" : ""}
+            {visible.length} {t("games").toLowerCase()}
           </span>
         </div>
       </div>
 
-      {/* â”€â”€ Game grid â”€â”€ */}
+      {/* ── Game grid ── */}
       <div style={{
         flex: 1, overflowY: "auto",
         padding: "14px 18px 20px",
@@ -275,7 +277,7 @@ export default function Hub() {
             color: "var(--t3)", fontSize: 12.5,
             border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 16,
           }}>
-            No games match your filters
+            {t("no_games_match_filters")}
           </div>
         ) : visible.map(game => (
           <GameCard
@@ -298,6 +300,7 @@ function GameCard({ game, thumbnail, thumbLoading, onToggleFav }: {
   thumbLoading: boolean;
   onToggleFav: () => void;
 }) {
+  const { t } = useLanguage();
   const [hovered, setHovered] = useState(false);
   const [copied,  setCopied]  = useState(false);
   const catColor = CAT_COLOR[game.category] ?? "#888";
@@ -410,7 +413,7 @@ function GameCard({ game, thumbnail, thumbLoading, onToggleFav }: {
             boxShadow: isActive ? "0 0 5px var(--green)" : "none",
           }} />
           <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "var(--green)" : "var(--red)" }}>
-            {game.status}
+            {isActive ? t("supported") : t("discontinued")}
           </span>
         </div>
 
@@ -436,9 +439,9 @@ function GameCard({ game, thumbnail, thumbLoading, onToggleFav }: {
           display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
         }}>
           {copied ? (
-            <><CheckIcon size={12} color="var(--green)" /><span>Copied!</span></>
+            <><CheckIcon size={12} color="var(--green)" /><span>{t("copied")}</span></>
           ) : (
-            <><CopyIcon size={11} color="rgba(255,255,255,0.7)" /><span>Copy Script</span></>
+            <><CopyIcon size={11} color="rgba(255,255,255,0.7)" /><span>{t("copy_script")}</span></>
           )}
         </button>
       </div>

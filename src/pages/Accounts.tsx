@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+﻿import { useLanguage } from "../context/LanguageContext";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -38,6 +39,7 @@ type FilterTab = "all" | "favorites";
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 export default function Accounts() {
+  const { t } = useLanguage();
   const [accounts,  setAccounts]  = useState<Account[]>([]);
   const [filter,    setFilter]    = useState<FilterTab>("all");
   const [search,    setSearch]    = useState("");
@@ -104,7 +106,7 @@ export default function Accounts() {
   };
 
   const handleRemove = async (userId: number, username: string) => {
-    if (!confirm(`Remove account @${username}?`)) return;
+    if (!confirm(`${t("remove_account_confirm")}${username}?`)) return;
     try {
       await invoke("remove_account", { userId });
       setAccounts(prev => prev.filter(a => a.user_id !== userId));
@@ -304,7 +306,7 @@ export default function Accounts() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
           <div>
             <h1 style={{ fontSize: 14, fontWeight: 900, letterSpacing: "0.06em", color: "var(--t1)", margin: 0 }}>
-              ACCOUNT MANAGER
+              {t("accounts_manager_title")}
             </h1>
             <p style={{ fontSize: 10, fontWeight: 700, color: "var(--t3)", letterSpacing: "0.1em", marginTop: 3 }}>
               MANAGE Â· LAUNCH Â· VALIDATE ROBLOX ACCOUNTS
@@ -313,9 +315,9 @@ export default function Accounts() {
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {/* Stat pills */}
-            <AccountStatPill value={accounts.length} label="TOTAL" color="var(--t1)" />
-            <AccountStatPill value={favCount} label="FAVORITES" color="var(--amber)" />
-            <AccountStatPill value={online} label="ACTIVE" color="var(--green)" />
+            <AccountStatPill value={accounts.length} label={t("total").toUpperCase()} color="var(--t1)" />
+            <AccountStatPill value={favCount} label={t("favorites").toUpperCase()} color="var(--amber)" />
+            <AccountStatPill value={online} label={t("active").toUpperCase()} color="var(--green)" />
 
             {/* Add Account dropdown */}
             <div ref={addMenuRef} style={{ position: "relative" }}>
@@ -331,7 +333,7 @@ export default function Accounts() {
                 onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.1)"}
                 onMouseLeave={e => e.currentTarget.style.filter = "none"}
               >
-                + Add Account
+                {t("add_account_btn_label")}
                 <ChevronDownIcon size={11} color="#0a0a0a" />
               </button>
 
@@ -346,12 +348,12 @@ export default function Accounts() {
                     boxShadow: "0 16px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
                   }}
                 >
-                  <DropdownItem icon={<GlobeIcon size={14} />} label="Manual Login" sub="Open Roblox login in a popup" onClick={handleManualLogin} />
-                  <DropdownItem icon={<KeyIcon size={14} />} label="User:Pass" sub="Auto-fill credentials in popup" onClick={() => { setAddMenu(false); setComboText(""); setLoginError(""); setShowUserPass(true); }} />
-                  <DropdownItem icon={<ShieldCheckIcon size={14} />} label="Cookie(s)" sub="Paste or detect from clipboard" onClick={handleOpenCookieMenu} />
-                  <DropdownItem icon={<FileTextIcon size={14} />} label="Cookies from .txt file" sub="Bulk import, one per line" onClick={() => { setAddMenu(false); setBulkText(""); setBulkResults([]); setShowBulk(true); }} />
+                  <DropdownItem icon={<GlobeIcon size={14} />} label={t("manual_login_title")} sub={t("manual_login_sub")} onClick={handleManualLogin} />
+                  <DropdownItem icon={<KeyIcon size={14} />} label={t("user_pass_title")} sub={t("user_pass_sub")} onClick={() => { setAddMenu(false); setComboText(""); setLoginError(""); setShowUserPass(true); }} />
+                  <DropdownItem icon={<ShieldCheckIcon size={14} />} label={t("cookie_title")} sub={t("cookie_sub")} onClick={handleOpenCookieMenu} />
+                  <DropdownItem icon={<FileTextIcon size={14} />} label={t("cookies_file_title")} sub={t("cookies_file_sub")} onClick={() => { setAddMenu(false); setBulkText(""); setBulkResults([]); setShowBulk(true); }} />
                   <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 8px" }} />
-                  <DropdownItem icon={<SettingsIcon size={14} />} label="Custom (URL + JS)" sub="Not implemented" onClick={() => setAddMenu(false)} />
+                  <DropdownItem icon={<SettingsIcon size={14} />} label={t("custom_login_title")} sub={t("custom_login_sub")} onClick={() => setAddMenu(false)} />
                 </div>
               )}
             </div>
@@ -365,7 +367,7 @@ export default function Accounts() {
               position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none",
             }} />
             <input
-              placeholder="Search by username or display name..."
+              placeholder={t("search_accounts_placeholder")}
               value={search}
               onChange={e => setSearch(e.target.value)}
               style={{
@@ -381,7 +383,7 @@ export default function Accounts() {
 
           {/* Filter tabs */}
           <div className="premium-tab-track" style={{ flexShrink: 0 }}>
-            {([["all", "All"], ["favorites", "Favorites"]] as [FilterTab, string][]).map(([id, label]) => (
+            {([["all", t("all_profiles").split(" ")[0]], ["favorites", t("favorites")]] as [FilterTab, string][]).map(([id, label]) => (
               <button
                 key={id}
                 onClick={() => setFilter(id)}
@@ -410,7 +412,7 @@ export default function Accounts() {
       >
         {loading ? (
           <div style={{ textAlign: "center", padding: "50px 20px", color: "var(--t3)", fontSize: 12 }}>
-            Loading accounts...
+            {t("loading_accounts")}
           </div>
         ) : visible.length === 0 ? (
           <div style={{
@@ -419,8 +421,8 @@ export default function Accounts() {
             border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 16,
           }}>
             {accounts.length === 0
-              ? 'No accounts yet â€” click "+ Add Account" to get started'
-              : search ? `No accounts match "${search}"` : "No accounts in this view"}
+              ? '{t("no_accounts_yet")}'
+              : search ? `${t("no_accounts_match")} "${search}"` : t("no_accounts_in_view")}
           </div>
         ) : (
           visible.map(account => (
@@ -447,11 +449,11 @@ export default function Accounts() {
 
       {/* Single Cookie */}
       {showSingle && (
-        <AccountModal title="Import Cookie" onClose={() => { setShowSingle(false); setAddError(""); }}>
-          <FieldLabel>ROBLOSECURITY COOKIE</FieldLabel>
+        <AccountModal title={t("import_cookie_title")} onClose={() => { setShowSingle(false); setAddError(""); }}>
+          <FieldLabel>{t("roblosecurity_cookie_label")}</FieldLabel>
           <textarea
             rows={4}
-            placeholder="Paste your .ROBLOSECURITY cookie here..."
+            placeholder={t("paste_roblosecurity_placeholder")}
             value={addCookie}
             onChange={e => setAddCookie(e.target.value)}
             style={{
@@ -463,17 +465,17 @@ export default function Accounts() {
           />
           {addError && <ErrorMsg msg={addError} />}
           <ModalActions>
-            <ModalBtn label="Cancel" onClick={() => { setShowSingle(false); setAddError(""); }} />
-            <ModalBtn label={adding ? "Validating..." : "Import Cookie"} onClick={handleAddSingle} primary disabled={adding || !addCookie.trim()} />
+            <ModalBtn label={t("cancel")} onClick={() => { setShowSingle(false); setAddError(""); }} />
+            <ModalBtn label={adding ? t("validating_btn") : t("import_cookie_title")} onClick={handleAddSingle} primary disabled={adding || !addCookie.trim()} />
           </ModalActions>
         </AccountModal>
       )}
 
       {/* Bulk Import */}
       {showBulk && (
-        <AccountModal title="Bulk Cookie Import" onClose={() => { if (!bulkAdding) { setShowBulk(false); setBulkText(""); setBulkResults([]); } }}>
+        <AccountModal title={t("bulk_cookie_import_title")} onClose={() => { if (!bulkAdding) { setShowBulk(false); setBulkText(""); setBulkResults([]); } }}>
           <p style={{ fontSize: 11, color: "var(--t2)", marginBottom: 14, lineHeight: 1.6 }}>
-            Paste cookies â€” one per line. Each must contain <code style={{ color: "var(--amber)", fontFamily: "monospace" }}>.ROBLOSECURITY</code>.
+            `{t("paste_cookies_one_per_line_desc")}` <code style={{ color: "var(--amber)", fontFamily: "monospace" }}>.ROBLOSECURITY</code>.
           </p>
           {bulkResults.length === 0 ? (
             <textarea
@@ -504,9 +506,9 @@ export default function Accounts() {
             </div>
           )}
           <ModalActions>
-            <ModalBtn label={bulkResults.length > 0 ? "Close" : "Cancel"} onClick={() => { setShowBulk(false); setBulkText(""); setBulkResults([]); }} disabled={bulkAdding} />
+            <ModalBtn label={bulkResults.length > 0 ? t("close_btn") : t("cancel")} onClick={() => { setShowBulk(false); setBulkText(""); setBulkResults([]); }} disabled={bulkAdding} />
             {bulkResults.length === 0 && (
-              <ModalBtn label={bulkAdding ? "Importing..." : "Import All"} onClick={handleBulkImport} primary disabled={bulkAdding || !bulkText.trim()} />
+              <ModalBtn label={bulkAdding ? t("importing_btn") : t("import_all_btn")} onClick={handleBulkImport} primary disabled={bulkAdding || !bulkText.trim()} />
             )}
           </ModalActions>
         </AccountModal>
@@ -514,11 +516,11 @@ export default function Accounts() {
 
       {/* User:Pass */}
       {showUserPass && (
-        <AccountModal title="User:Pass Combo Import" onClose={() => { if (!loginLoading) setShowUserPass(false); }}>
+        <AccountModal title={t("user_pass_combo_import_title")} onClose={() => { if (!loginLoading) setShowUserPass(false); }}>
           <p style={{ fontSize: 11, color: "var(--t2)", marginBottom: 14, lineHeight: 1.6 }}>
-            Paste <code style={{ color: "var(--amber)", fontFamily: "monospace" }}>username:password</code> combos (one per line). A login window will open for each account.
+            `{t("paste_combos_desc")}` A login window will open for each account.
           </p>
-          <FieldLabel>ACCOUNT COMBOS</FieldLabel>
+          <FieldLabel>{t("account_combos_label")}</FieldLabel>
           <textarea
             rows={6}
             value={comboText}
@@ -534,8 +536,8 @@ export default function Accounts() {
           />
           {loginError && <ErrorMsg msg={loginError} />}
           <ModalActions>
-            <ModalBtn label="Cancel" onClick={() => setShowUserPass(false)} disabled={loginLoading} />
-            <ModalBtn label={loginLoading ? "Processing..." : "Start Import"} onClick={() => handleComboImport(comboText)} primary disabled={loginLoading || !comboText.trim()} />
+            <ModalBtn label={t("cancel")} onClick={() => setShowUserPass(false)} disabled={loginLoading} />
+            <ModalBtn label={loginLoading ? t("validating_btn") : t("start_import_btn")} onClick={() => handleComboImport(comboText)} primary disabled={loginLoading || !comboText.trim()} />
           </ModalActions>
         </AccountModal>
       )}
@@ -561,37 +563,37 @@ export default function Accounts() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Display Name */}
-            <UtilSection label="DISPLAY NAME" Icon={UserIcon}>
+            <UtilSection label={t("display_name_label")} Icon={UserIcon}>
               <div style={{ display: "flex", gap: 8 }}>
-                <UtilInput value={utilNewDisplayName} onChange={setUtilNewDisplayName} placeholder="New display name" disabled={utilLoading} />
-                <UtilAction label="Set Name" onClick={handleSetDisplayName} disabled={utilLoading || !utilNewDisplayName.trim()} />
+                <UtilInput value={utilNewDisplayName} onChange={setUtilNewDisplayName} placeholder={t("new_display_name_placeholder")} disabled={utilLoading} />
+                <UtilAction label={t("set_name")} onClick={handleSetDisplayName} disabled={utilLoading || !utilNewDisplayName.trim()} />
               </div>
             </UtilSection>
 
             {/* Password */}
-            <UtilSection label="CHANGE PASSWORD" Icon={KeyIcon}>
+            <UtilSection label={t("change_password_label")} Icon={KeyIcon}>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <UtilInput type="password" value={utilCurrentPassword} onChange={setUtilCurrentPassword} placeholder="Current password" disabled={utilLoading} />
+                <UtilInput type="password" value={utilCurrentPassword} onChange={setUtilCurrentPassword} placeholder={t("current_password_placeholder")} disabled={utilLoading} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <UtilInput type="password" value={utilNewPassword} onChange={setUtilNewPassword} placeholder="New password" disabled={utilLoading} />
-                  <UtilAction label="Change" onClick={handleChangePassword} disabled={utilLoading || !utilCurrentPassword || !utilNewPassword} />
+                  <UtilInput type="password" value={utilNewPassword} onChange={setUtilNewPassword} placeholder={t("new_password_placeholder")} disabled={utilLoading} />
+                  <UtilAction label={t("change_password_btn")} onClick={handleChangePassword} disabled={utilLoading || !utilCurrentPassword || !utilNewPassword} />
                 </div>
               </div>
             </UtilSection>
 
             {/* Friends */}
-            <UtilSection label="FRIENDS & BLOCKS" Icon={GamepadIcon}>
+            <UtilSection label={t("friend_block_label")} Icon={GamepadIcon}>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <UtilInput value={utilTargetUser} onChange={setUtilTargetUser} placeholder="Target Roblox username" disabled={utilLoading} />
+                <UtilInput value={utilTargetUser} onChange={setUtilTargetUser} placeholder={t("target_username_placeholder")} disabled={utilLoading} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <UtilAction label="Add Friend" onClick={handleSendFriendRequest} disabled={utilLoading || !utilTargetUser.trim()} />
-                  <UtilAction label="Block User" onClick={handleBlockUser} disabled={utilLoading || !utilTargetUser.trim()} danger />
+                  <UtilAction label={t("add_friend_btn")} onClick={handleSendFriendRequest} disabled={utilLoading || !utilTargetUser.trim()} />
+                  <UtilAction label={t("block_user_btn")} onClick={handleBlockUser} disabled={utilLoading || !utilTargetUser.trim()} danger />
                 </div>
               </div>
             </UtilSection>
 
             {/* Security */}
-            <UtilSection label="SECURITY" Icon={ShieldIcon}>
+            <UtilSection label={t("security_label")} Icon={ShieldIcon}>
               <UtilAction label="Sign Out All Other Sessions" onClick={handleSignOutAll} disabled={utilLoading} fullWidth />
             </UtilSection>
           </div>
@@ -619,6 +621,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
   onToggleFav: () => void; onRemove: () => void;
   onLaunch: () => void; onValidate: () => void; onOpenUtilities: () => void;
 }) {
+  const { t } = useLanguage();
   const [hovered, setHovered] = useState(false);
   const isValid = account.cookie_status === "Valid";
   const isUnknown = account.cookie_status === "Unknown";
@@ -627,7 +630,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
 
   const lastLaunchedDisplay = account.last_launched_at
     ? new Date(account.last_launched_at).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "Never";
+    : t("never");
 
   return (
     <div
@@ -683,7 +686,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
             {statusLabel.toUpperCase()}
           </span>
         </div>
-        <div style={{ fontSize: 9.5, color: "var(--t3)" }}>Last: {lastLaunchedDisplay}</div>
+        <div style={{ fontSize: 9.5, color: "var(--t3)" }}>{t("last_launched")}: {lastLaunchedDisplay}</div>
         <button
           onClick={onValidate}
           style={{
@@ -693,7 +696,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
             opacity: hovered ? 1 : 0, transition: "opacity .12s",
           }}
         >
-          Re-validate
+          {t("re_validate_btn")}
         </button>
       </div>
 
@@ -766,7 +769,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
         }}
       >
         <ZapIcon size={12} color={isValid && !isLaunching ? "#0a0a0a" : "var(--t3)"} />
-        {isLaunching ? "Launching..." : "Quick Launch"}
+        {isLaunching ? t("launching_suffix") : t("quick_launch_btn")}
       </button>
     </div>
   );

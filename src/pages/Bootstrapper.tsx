@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useBootstrapper } from "../context/BootstrapperContext";
+import { useLanguage } from "../context/LanguageContext";
 import type { RobloxInstall } from "../context/BootstrapperContext";
 import {
   SettingsIcon, FlagIcon, GamepadIcon, StarIcon, LinkIcon,
@@ -62,6 +63,7 @@ export default function Bootstrapper() {
 }
 
 function BootstrapperTab({ flagsCount, onSwitchTab }: { flagsCount: number; onSwitchTab: () => void }) {
+  const { t } = useLanguage();
   const {
     status, progress, installing, checking, error, successMsg,
     detectedInstalls, detecting, preferredLauncher,
@@ -83,7 +85,7 @@ function BootstrapperTab({ flagsCount, onSwitchTab }: { flagsCount: number; onSw
   const isInstalled = !!status?.exe_path;
   const needsUpdate = status?.needs_update ?? true;
   const statusColor = !isInstalled ? "#F87171" : needsUpdate ? "#FBBF24" : "#34D399";
-  const statusLabel = !isInstalled ? "Not Installed" : needsUpdate ? "Update Available" : "Up to Date";
+  const statusLabel = !isInstalled ? t("not_installed") : needsUpdate ? t("update_available") : t("up_to_date");
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -126,15 +128,15 @@ function BootstrapperTab({ flagsCount, onSwitchTab }: { flagsCount: number; onSw
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <span style={{ fontSize: 11, color: "var(--t3)" }}>
-                  Version: <span style={{ color: "var(--t2)", fontFamily: "monospace", fontWeight: 700 }}>
+                  {t("current_version")}: <span style={{ color: "var(--t2)", fontFamily: "monospace", fontWeight: 700 }}>
                     {status?.installed_version?.substring(0, 16) ?? "—"}
                   </span>
                 </span>
                 <span style={{ fontSize: 11, color: "var(--t3)" }}>
-                  Launcher: <span style={{ color: "var(--amber)", fontWeight: 700 }}>{preferredLauncher}</span>
+                  {t("launcher")}: <span style={{ color: "var(--amber)", fontWeight: 700 }}>{preferredLauncher}</span>
                 </span>
                 <span style={{ fontSize: 11, color: "var(--t3)" }}>
-                  FastFlags: <span style={{ color: flagsCount > 0 ? "#A78BFA" : "var(--t3)", fontWeight: 700 }}>{flagsCount} active</span>
+                  FastFlags: <span style={{ color: flagsCount > 0 ? "#A78BFA" : "var(--t3)", fontWeight: 700 }}>{flagsCount} {t("active").toLowerCase()}</span>
                 </span>
               </div>
             </div>
@@ -143,18 +145,18 @@ function BootstrapperTab({ flagsCount, onSwitchTab }: { flagsCount: number; onSw
           {/* Right: action buttons + fastflags shortcut */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
             <button onClick={checkUpdate} disabled={checking || installing} className="glow-btn" style={ghostBtnStyle(checking || installing)}>
-              <RefreshIcon size={12} />{checking ? "Checking..." : "Check"}
+              <RefreshIcon size={12} />{checking ? t("checking") : t("check")}
             </button>
             <button onClick={startInstall} disabled={installing || checking} className="glow-btn"
               style={{
                 ...ghostBtnStyle(installing || checking),
                 ...(needsUpdate ? { background: "rgba(232,232,232,0.9)", color: "#0a0a0a", border: "none", boxShadow: "0 4px 14px rgba(232,232,232,0.15)" } : {}),
               }}>
-              <DownloadIcon size={12} />{installing ? `${progress?.percent ?? 0}%` : isInstalled ? "Update" : "Install"}
+              <DownloadIcon size={12} />{installing ? `${progress?.percent ?? 0}%` : isInstalled ? t("update_btn") : t("download_install")}
             </button>
             {isInstalled && (
               <button onClick={handleRegisterProtocol} disabled={registering || installing} className="glow-btn" style={{ ...ghostBtnStyle(registering || installing), color: "#818CF8", border: "1px solid rgba(129,140,248,0.25)", background: "rgba(129,140,248,0.05)" }}>
-                <LinkIcon size={12} />{registering ? "Registering..." : "Register Protocol"}
+                <LinkIcon size={12} />{registering ? t("checking") : t("register_protocol")}
               </button>
             )}
             <div style={{ width: 1, height: 24, background: "rgba(255,255,255,0.08)" }} />

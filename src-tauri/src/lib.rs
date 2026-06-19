@@ -128,7 +128,165 @@ fn process_has_window(_pid: u32) -> bool {
     true
 }
 
-struct MultiState(Mutex<bool>);
+#[cfg(windows)]
+struct MultiRobloxHandles {
+    mutex: windows_sys::Win32::Foundation::HANDLE,
+    file: Option<std::fs::File>,
+}
+
+#[cfg(windows)]
+unsafe impl Send for MultiRobloxHandles {}
+#[cfg(windows)]
+unsafe impl Sync for MultiRobloxHandles {}
+
+#[cfg(windows)]
+impl Drop for MultiRobloxHandles {
+    fn drop(&mut self) {
+        unsafe {
+            use windows_sys::Win32::Foundation::CloseHandle;
+            use windows_sys::Win32::System::Threading::ReleaseMutex;
+            if self.mutex != std::ptr::null_mut() {
+                ReleaseMutex(self.mutex);
+                CloseHandle(self.mutex);
+                println!("[MultiRoblox] Closed singleton mutex handle.");
+            }
+            if self.file.is_some() {
+                println!("[MultiRoblox] Closed cookie file handle (released lock).");
+            }
+        }
+    }
+}
+
+pub struct MultiState {
+    active: Mutex<bool>,
+    #[cfg(windows)]
+    handles: Mutex<Option<MultiRobloxHandles>>,
+}
+
+impl MultiState {
+    pub fn new(active: bool) -> Self {
+        #[cfg(windows)]
+        let handles = if active {
+            Mutex::new(enable_multi_roblox_internal())
+        } else {
+            Mutex::new(None)
+        };
+        
+        Self {
+            active: Mutex::new(active),
+            #[cfg(windows)]
+            handles,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        *self.active.lock().unwrap()
+    }
+
+    pub fn set_active(&self, active: bool) {
+        let mut act_lock = self.active.lock().unwrap();
+        *act_lock = active;
+        #[cfg(windows)]
+        {
+            let mut handles_lock = self.handles.lock().unwrap();
+            if active {
+                if handles_lock.is_none() {
+                    *handles_lock = enable_multi_roblox_internal();
+                }
+            } else {
+                *handles_lock = None;
+            }
+        }
+    }
+
+    pub fn ensure_active(&self) {
+        #[cfg(windows)]
+        if *self.active.lock().unwrap() {
+            let mut handles_lock = self.handles.lock().unwrap();
+            if handles_lock.is_none() {
+                *handles_lock = enable_multi_roblox_internal();
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+fn enable_multi_roblox_internal() -> Option<MultiRobloxHandles> {
+    use windows_sys::Win32::Foundation::GetLastError;
+    use windows_sys::Win32::System::Threading::CreateMutexW;
+    use std::fs::OpenOptions;
+    use std::os::windows::io::AsRawHandle;
+
+    let mutex_name: Vec<u16> = "ROBLOX_singletonEvent\0".encode_utf16().collect();
+    let mutex = unsafe {
+        CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr())
+    };
+    if mutex == std::ptr::null_mut() {
+        eprintln!("[MultiRoblox] Failed to create singleton mutex. Error: {}", unsafe { GetLastError() });
+        return None;
+    }
+    println!("[MultiRoblox] Created singleton mutex.");
+
+    let local = std::env::var("LOCALAPPDATA").ok()?;
+    let cookies_path = std::path::PathBuf::from(local)
+        .join("Roblox")
+        .join("LocalStorage")
+        .join("RobloxCookies.dat");
+
+    let mut file_handle = None;
+    if cookies_path.exists() {
+        match OpenOptions::new().read(true).write(true).open(&cookies_path) {
+            Ok(file) => {
+                let raw_h = file.as_raw_handle();
+                unsafe {
+                    extern "system" {
+                        fn LockFile(
+                            hFile: windows_sys::Win32::Foundation::HANDLE,
+                            dwFileOffsetLow: u32,
+                            dwFileOffsetHigh: u32,
+                            nNumberOfBytesToLockLow: u32,
+                            nNumberOfBytesToLockHigh: u32,
+                        ) -> windows_sys::Win32::Foundation::BOOL;
+                    }
+                    let size = std::fs::metadata(&cookies_path).map(|m| m.len()).unwrap_or(1024 * 1024) as u32;
+                    if LockFile(raw_h as _, 0, 0, size, 0) != 0 {
+                        println!("[MultiRoblox] Successfully locked RobloxCookies.dat");
+                        file_handle = Some(file);
+                    } else {
+                        eprintln!("[MultiRoblox] Failed to lock RobloxCookies.dat. Error: {}", GetLastError());
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[MultiRoblox] Failed to open RobloxCookies.dat for locking: {}", e);
+            }
+        }
+    } else {
+        println!("[MultiRoblox] RobloxCookies.dat not found. Skipping lock.");
+    }
+
+    Some(MultiRobloxHandles { mutex, file: file_handle })
+}
+
+#[cfg(not(windows))]
+pub struct MultiState {
+    active: Mutex<bool>,
+}
+
+#[cfg(not(windows))]
+impl MultiState {
+    pub fn new(active: bool) -> Self {
+        Self { active: Mutex::new(active) }
+    }
+    pub fn is_active(&self) -> bool {
+        *self.active.lock().unwrap()
+    }
+    pub fn set_active(&self, active: bool) {
+        *self.active.lock().unwrap() = active;
+    }
+    pub fn ensure_active(&self) {}
+}
+
 
 // ── Storage path ──────────────────────────────────────────────────────────────
 fn data_dir() -> PathBuf {
@@ -621,51 +779,7 @@ fn search_versions_dir(versions: &PathBuf) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-// ── Multi-instance bypass (Windows mutex nullification) ───────────────────────
-#[cfg(windows)]
-fn release_roblox_singleton() {
-    use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::System::Threading::{OpenMutexW, OpenEventW};
-    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
-    use windows_sys::Win32::Foundation::CloseHandle;
-
-    // NtReleaseMutant is the kernel primitive underneath ReleaseMutex.
-    // Unlike ReleaseMutex, it does NOT enforce thread-ownership, so we can
-    // release a mutex owned by another process (e.g. the already-running Roblox).
-    type NtReleaseMutantFn = unsafe extern "system" fn(HANDLE, *mut i32) -> i32;
-
-    let nt_release: Option<NtReleaseMutantFn> = unsafe {
-        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
-        if ntdll != std::ptr::null_mut() {
-            GetProcAddress(ntdll, b"NtReleaseMutant\0".as_ptr())
-                .map(|f| std::mem::transmute(f))
-        } else {
-            None
-        }
-    };
-
-    unsafe {
-        // Release Roblox's singleton mutex so a second instance can acquire it
-        let mutex_name: Vec<u16> = "ROBLOX_singletonMutex\0".encode_utf16().collect();
-        let h: HANDLE = OpenMutexW(0x1F0001, 0, mutex_name.as_ptr());
-        if h != std::ptr::null_mut() {
-            if let Some(nt_rel) = nt_release {
-                nt_rel(h, std::ptr::null_mut());
-            }
-            CloseHandle(h);
-        }
-
-        // Close the singleton event handle (prevents early-exit checks in newer Roblox builds)
-        let event_name: Vec<u16> = "ROBLOX_singletonEvent\0".encode_utf16().collect();
-        let h2: HANDLE = OpenEventW(0x1F0003, 0, event_name.as_ptr());
-        if h2 != std::ptr::null_mut() {
-            CloseHandle(h2);
-        }
-    }
-}
-
-#[cfg(not(windows))]
-fn release_roblox_singleton() {}
+// Multi-instance bypass is now handled persistently in MultiState on Windows.
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Tauri commands
@@ -972,6 +1086,45 @@ async fn add_recent_game(place_id: String) -> Result<(), String> {
     add_recent_game_internal(&place_id).await
 }
 
+fn is_uuid(s: &str) -> bool {
+    let cleaned = s.trim().trim_matches('{').trim_matches('}');
+    if cleaned.len() != 36 {
+        return false;
+    }
+    let bytes = cleaned.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        match i {
+            8 | 13 | 18 | 23 => {
+                if b != b'-' {
+                    return false;
+                }
+            }
+            _ => {
+                if !b.is_ascii_hexdigit() {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+fn format_as_uuid(s: &str) -> Option<String> {
+    let cleaned = s.trim().trim_matches('{').trim_matches('}');
+    if cleaned.len() == 32 && cleaned.chars().all(|c| c.is_ascii_hexdigit()) {
+        Some(format!(
+            "{}-{}-{}-{}-{}",
+            &cleaned[0..8],
+            &cleaned[8..12],
+            &cleaned[12..16],
+            &cleaned[16..20],
+            &cleaned[20..32]
+        ))
+    } else {
+        None
+    }
+}
+
 #[tauri::command]
 async fn launch_account(
     user_id: i64,
@@ -985,6 +1138,7 @@ async fn launch_account(
     multi_state: tauri::State<'_, MultiState>,
     app: tauri::AppHandle,
 ) -> Result<u32, String> {
+    multi_state.ensure_active();
     let accounts = load_stored();
     let account = accounts
         .iter()
@@ -1013,111 +1167,102 @@ async fn launch_account(
         game_name.clone().unwrap()
     };
 
-    let mut resolved_access_code: Option<String> = None;
-    let mut share_resolved_place_id: Option<String> = None;
+    // Single private server code sent as &privateServerLinkCode= in every case.
+    // placeId override comes from URL parsing when the input contains one.
+    let mut resolved_link_code: Option<String> = None;
+    let mut resolved_place_id_override: Option<String> = None;
 
     if let Some(ref raw_code) = access_code {
         let trimmed = raw_code.trim();
         if !trimmed.is_empty() {
             if trimmed.starts_with("http") {
                 if let Ok(u) = url::Url::parse(trimmed) {
-                    let is_share = u.host_str()
-                        .map(|h| h.ends_with("roblox.com"))
-                        .unwrap_or(false)
-                        && u.path() == "/share";
+                    let host_is_roblox = u.host_str().map(|h| h.ends_with("roblox.com")).unwrap_or(false);
 
-                    if is_share {
-                        // New-format private server share link — resolve via API
-                        let mut share_code = None;
-                        let mut share_type = "Server".to_string();
-                        for (key, val) in u.query_pairs() {
-                            let val_str = val.into_owned();
-                            if key == "code" { share_code = Some(val_str); }
-                            else if key == "type" { share_type = val_str; }
+                    if host_is_roblox && u.path() == "/share" {
+                        // Share link: roblox.com/share?code=X&type=Server
+                        // Resolve via API to get the real placeId + privateServerLinkCode.
+                        let share_code = u.query_pairs()
+                            .find(|(k, _)| k == "code")
+                            .map(|(_, v)| v.into_owned());
+
+                        if let Some(sc) = share_code {
+                            match resolve_share_link(&cookie, &sc).await {
+                                Ok((pid, link_code)) => {
+                                    eprintln!("[launch_account] Share link resolved → placeId: {}, privateServerLinkCode: {}", pid, link_code);
+                                    resolved_place_id_override = Some(pid);
+                                    resolved_link_code = Some(link_code);
+                                }
+                                Err(e) => {
+                                    // API failed — share code itself IS the privateServerLinkCode.
+                                    // Fall back to it directly; placeId comes from the user-provided place_id field.
+                                    eprintln!("[launch_account] Share link API failed ({}). Using share code as privateServerLinkCode directly with user-provided placeId.", e);
+                                    resolved_link_code = Some(sc);
+                                }
+                            }
                         }
-                        if let Some(code) = share_code {
-                            if let Ok(http) = reqwest::Client::builder()
-                                .user_agent("Mozilla/5.0")
-                                .build()
-                            {
-                                let body = serde_json::json!({
-                                    "shareLink": { "code": code, "type": share_type }
-                                });
-                                if let Ok(resp) = http
-                                    .post("https://apis.roblox.com/sharelinks/v1/resolve")
-                                    .header("Cookie", format!(".ROBLOSECURITY={}", cookie))
-                                    .json(&body)
-                                    .send()
-                                    .await
-                                {
-                                    if let Ok(json) = resp.json::<serde_json::Value>().await {
-                                        let invite = &json["resolvedLink"]["privateServerInviteLink"];
-                                        if let Some(ac) = invite["accessCode"].as_str() {
-                                            resolved_access_code = Some(ac.to_string());
-                                        }
-                                        if let Some(pid) = invite["placeId"].as_i64() {
-                                            share_resolved_place_id = Some(pid.to_string());
-                                        }
+                    } else if host_is_roblox {
+                        // Legacy URL: roblox.com/games/PLACE_ID/...?privateServerLinkCode=X
+                        if let Some(mut segments) = u.path_segments() {
+                            if segments.next() == Some("games") {
+                                if let Some(pid_str) = segments.next() {
+                                    if pid_str.chars().all(|c| c.is_ascii_digit()) {
+                                        resolved_place_id_override = Some(pid_str.to_string());
                                     }
                                 }
                             }
                         }
-                    } else {
-                        // Legacy URL — extract code query param
-                        let mut found_code = None;
                         for (key, val) in u.query_pairs() {
-                            if key == "code" || key == "privateServerLinkCode" || key == "Code" {
-                                found_code = Some(val.into_owned());
+                            if key == "privateServerLinkCode" || key == "code" || key == "Code" {
+                                resolved_link_code = Some(val.into_owned());
                                 break;
                             }
                         }
-                        resolved_access_code = Some(found_code.unwrap_or_else(|| trimmed.to_string()));
                     }
-                } else {
-                    resolved_access_code = Some(trimmed.to_string());
                 }
             } else {
-                resolved_access_code = Some(trimmed.to_string());
+                // Raw code — use directly as privateServerLinkCode regardless of format.
+                // Strip dashes if UUID-formatted so Roblox receives the bare 32-hex form.
+                resolved_link_code = Some(trimmed.replace('-', ""));
             }
         }
     }
 
     let launch_args = if is_app_mode {
         format!(
-            "roblox-player:1+launchmode:app+gameinfo:{}+launchtime:{}+platform:Windows+platfrom:Windows+browserTrackerId:{}",
+            "roblox-player:1+launchmode:app+gameinfo:{}+launchtime:{}+platform:Windows+browserTrackerId:{}",
             ticket, timestamp, browser_tracker_id
         )
     } else {
-        // Share link resolution may override the place ID
-        let launch_place_id = share_resolved_place_id.as_deref()
+        let launch_place_id = resolved_place_id_override.as_deref()
             .or(place_id.as_deref())
             .unwrap_or("1818");
 
-        let launcher_url = if let Some(ref code) = resolved_access_code {
+        let launcher_url = if let Some(ref link_code) = resolved_link_code {
             format!(
-                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestPrivateGame&placeId={}&accessCode={}",
-                launch_place_id, code
+                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestPrivateGame&placeId={}&linkCode={}&privateServerLinkCode={}",
+                launch_place_id, link_code, link_code
             )
         } else if let Some(ref job) = job_id.filter(|s| !s.is_empty()) {
             format!(
-                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGameJob&placeId={}&gameId={}&isPlayTogetherGame=false",
-                launch_place_id, job
+                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGameJob&browserTrackerId={}&placeId={}&gameId={}&isPlayTogetherGame=false",
+                browser_tracker_id, launch_place_id, job
             )
         } else {
             format!(
-                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame&placeId={}&isPlayTogetherGame=false",
-                launch_place_id
+                "https://assetgame.roblox.com/game/PlaceLauncher.ashx?request=RequestGame&browserTrackerId={}&placeId={}&isPlayTogetherGame=false",
+                browser_tracker_id, launch_place_id
             )
         };
 
         let encoded_url = urlencoding::encode(&launcher_url).into_owned();
         format!(
-            "roblox-player:1+launchmode:play+gameinfo:{}+launchtime:{}+platform:Windows+platfrom:Windows+placelauncherurl:{}+browserTrackerId:{}",
+            "roblox-player:1+launchmode:play+gameinfo:{}+launchtime:{}+platform:Windows+placelauncherurl:{}+browserTrackerId:{}",
             ticket, timestamp, encoded_url, browser_tracker_id
         )
     };
 
-    let multi_active = *multi_state.0.lock().unwrap();
+    let multi_active = multi_state.is_active();
 
     if let Some(ref pid_str) = place_id {
         let pid_clone = pid_str.clone();
@@ -1583,6 +1728,107 @@ async fn open_login_window(
     });
 
     Ok(())
+}
+
+async fn resolve_share_link(cookie: &str, share_code: &str) -> Result<(String, String), String> {
+    eprintln!("[resolve_share_link] Resolving share code: {}", share_code);
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // CSRF token required for POST to apis.roblox.com
+    let csrf_resp = client
+        .post("https://auth.roblox.com/v2/logout")
+        .header("Cookie", format!(".ROBLOSECURITY={}", cookie))
+        .send()
+        .await
+        .map_err(|e| format!("CSRF fetch failed: {}", e))?;
+    let csrf = csrf_resp
+        .headers()
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No CSRF token returned".to_string())?;
+
+    eprintln!("[resolve_share_link] Got CSRF token: {}...", &csrf[..csrf.len().min(8)]);
+
+    // Attempt 1: primary format
+    let resp = client
+        .post("https://apis.roblox.com/sharelinks/v1/resolve-link")
+        .header("Cookie", format!(".ROBLOSECURITY={}", cookie))
+        .header("x-csrf-token", &csrf)
+        .header("Origin", "https://www.roblox.com")
+        .header("Referer", "https://www.roblox.com/")
+        .json(&serde_json::json!({
+            "linkId": share_code,
+            "linkType": "Server"
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Share resolve request failed: {}", e))?;
+
+    let mut status = resp.status();
+    let mut body = resp.text().await.unwrap_or_default();
+    eprintln!("[resolve_share_link] Primary attempt status: {}, body: {}", status, body);
+
+    // Attempt 2: alternative format if primary failed
+    if !status.is_success() {
+        eprintln!("[resolve_share_link] Retrying with alternative body format...");
+        let resp2 = client
+            .post("https://apis.roblox.com/sharelinks/v1/resolve-link")
+            .header("Cookie", format!(".ROBLOSECURITY={}", cookie))
+            .header("x-csrf-token", &csrf)
+            .header("Origin", "https://www.roblox.com")
+            .header("Referer", "https://www.roblox.com/")
+            .json(&serde_json::json!({
+                "code": share_code,
+                "type": "Server"
+            }))
+            .send()
+            .await
+            .map_err(|e| format!("Share resolve retry failed: {}", e))?;
+        status = resp2.status();
+        body = resp2.text().await.unwrap_or_default();
+        eprintln!("[resolve_share_link] Retry attempt status: {}, body: {}", status, body);
+    }
+
+    if !status.is_success() {
+        return Err(format!("resolve-link API failed (HTTP {}): {}", status, body));
+    }
+
+    let json: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse response: {} — body: {}", e, body))?;
+
+    eprintln!("[resolve_share_link] Success response: {}", json);
+
+    // Extract placeId — search multiple paths the API may use
+    let place_id = json["privateServerInviteData"]["placeId"]
+        .as_i64().map(|n| n.to_string())
+        .or_else(|| json["privateServerInviteData"]["placeId"].as_str().map(String::from))
+        .or_else(|| json["resolvedLink"]["privateServerInviteData"]["placeId"].as_i64().map(|n| n.to_string()))
+        .or_else(|| json["resolvedLink"]["privateServerInviteData"]["placeId"].as_str().map(String::from))
+        .or_else(|| json["placeId"].as_i64().map(|n| n.to_string()))
+        .or_else(|| json["placeId"].as_str().map(String::from))
+        .or_else(|| json["data"]["placeId"].as_i64().map(|n| n.to_string()))
+        .or_else(|| json["data"]["placeId"].as_str().map(String::from))
+        .ok_or_else(|| format!("placeId not found in response. Full body: {}", body))?;
+
+    // Extract link code — API may return linkCode or privateServerLinkCode
+    let link_code = json["privateServerInviteData"]["linkCode"]
+        .as_str().map(String::from)
+        .or_else(|| json["privateServerInviteData"]["privateServerLinkCode"].as_str().map(String::from))
+        .or_else(|| json["resolvedLink"]["privateServerInviteData"]["privateServerLinkCode"].as_str().map(String::from))
+        .or_else(|| json["resolvedLink"]["privateServerInviteData"]["linkCode"].as_str().map(String::from))
+        .or_else(|| json["privateServerLinkCode"].as_str().map(String::from))
+        .or_else(|| json["linkCode"].as_str().map(String::from))
+        .or_else(|| json["data"]["privateServerLinkCode"].as_str().map(String::from))
+        .or_else(|| json["data"]["linkCode"].as_str().map(String::from))
+        .ok_or_else(|| format!("link code not found in response. Full body: {}", body))?;
+
+    eprintln!("[resolve_share_link] Resolved → placeId: {}, linkCode: {}", place_id, link_code);
+    Ok((place_id, link_code))
 }
 
 async fn get_csrf_token(cookie: &str) -> Option<String> {
@@ -2061,16 +2307,12 @@ async fn fetch_place_details(place_id: i64) -> Result<RobloxGameResultDto, Strin
 
 #[tauri::command]
 fn get_multi_instance(state: tauri::State<'_, MultiState>) -> bool {
-    *state.0.lock().unwrap()
+    state.is_active()
 }
 
 #[tauri::command]
 fn set_multi_instance(active: bool, state: tauri::State<'_, MultiState>) {
-    let mut lock = state.0.lock().unwrap();
-    *lock = active;
-    if active {
-        release_roblox_singleton();
-    }
+    state.set_active(active);
 }
 
 #[tauri::command]
@@ -2090,11 +2332,7 @@ fn save_settings(settings: serde_json::Value, state: tauri::State<'_, MultiState
     
     // Sync MultiRoblox setting to MultiState
     if let Some(multi) = settings.get("MultiRoblox").and_then(|v| v.as_bool()) {
-        let mut lock = state.0.lock().unwrap();
-        *lock = multi;
-        if multi {
-            release_roblox_singleton();
-        }
+        state.set_active(multi);
     }
 
     let s = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
@@ -2355,15 +2593,57 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             })?;
             #[cfg(target_os = "windows")]
             {
-                if multi_active { release_roblox_singleton(); }
                 let pid = launch_detached(&exe, launch_args)?;
                 return Ok(pid);
             }
             #[cfg(not(target_os = "windows"))]
             return Err("Official launcher is only supported on Windows".into());
         }
+        "bloxstrap" => {
+            let local = std::env::var("LOCALAPPDATA").map_err(|e| {
+                let err = format!("Failed to read LOCALAPPDATA: {}", e);
+                eprintln!("[ERROR do_launch_with_preference] {}", err);
+                err
+            })?;
+            let bloxstrap_exe = PathBuf::from(&local).join("Bloxstrap").join("Bloxstrap.exe");
+            if !bloxstrap_exe.exists() {
+                return Err("Bloxstrap is not installed at %LOCALAPPDATA%\\Bloxstrap\\Bloxstrap.exe. Please install it first.".to_string());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let args = format!("-player {}", launch_args);
+                let pid = launch_detached(&bloxstrap_exe, &args)?;
+                return Ok(pid);
+            }
+            #[cfg(not(target_os = "windows"))]
+            return Err("Bloxstrap is only supported on Windows".into());
+        }
+        "fishstrap" => {
+            let local = std::env::var("LOCALAPPDATA").map_err(|e| {
+                let err = format!("Failed to read LOCALAPPDATA: {}", e);
+                eprintln!("[ERROR do_launch_with_preference] {}", err);
+                err
+            })?;
+            let local_path = PathBuf::from(local);
+            let mut fish_dir = local_path.join("Fishstrap");
+            let mut fish_exe = fish_dir.join("Fishstrap.exe");
+            if !fish_exe.exists() { fish_dir = local_path.join("Fishtrap");  fish_exe = fish_dir.join("Fishtrap.exe"); }
+            if !fish_exe.exists() { fish_dir = local_path.join("Fishstrap"); fish_exe = fish_dir.join("Fishtrap.exe"); }
+            if !fish_exe.exists() { fish_dir = local_path.join("Fishtrap");  fish_exe = fish_dir.join("Fishstrap.exe"); }
+            if !fish_exe.exists() {
+                return Err("Fishstrap/Fishtrap is not installed under %LOCALAPPDATA%\\Fishstrap or Fishtrap".to_string());
+            }
+            #[cfg(target_os = "windows")]
+            {
+                let args = format!("-player {}", launch_args);
+                let pid = launch_detached(&fish_exe, &args)?;
+                return Ok(pid);
+            }
+            #[cfg(not(target_os = "windows"))]
+            return Err("Fishstrap is only supported on Windows".into());
+        }
         _ => {
-            // For custom bootstrappers (bloxstrap, fishstrap): apply registry first, then launch protocol
+            // For protocol and custom launchers: apply registry first, then launch protocol
             apply_launcher_registry(resolved_pref)?;
             launch_via_protocol(launch_args)?;
         }
@@ -2549,7 +2829,7 @@ async fn install_roblox_for_launch(app: &tauri::AppHandle, version_hash: &str) -
 async fn ensure_latest_and_launch(
     app: &tauri::AppHandle,
     launch_args: &str,
-    multi_active: bool,
+    _multi_active: bool,
 ) -> Result<Option<u32>, String> {
     if let Some(existing) = app.get_webview_window("launch_progress") {
         let _ = existing.close();
@@ -2630,8 +2910,6 @@ async fn ensure_latest_and_launch(
         percent: 95,
     });
 
-    // Release just before spawn so Roblox acquires the mutex immediately after
-    if multi_active { release_roblox_singleton(); }
     let pid = match launch_detached(&exe, launch_args) {
         Ok(p) => p,
         Err(e) => {
@@ -2900,6 +3178,9 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
 
 #[tauri::command]
 async fn check_for_update() -> Result<UpdateInfo, String> {
+    #[cfg(debug_assertions)]
+    return Ok(UpdateInfo { has_update: false, version: String::new(), download_url: String::new(), notes: String::new(), current: APP_VERSION.to_string() });
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .user_agent("ReiyaAccountManager")
@@ -4076,7 +4357,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_http::init())
         .manage(SessionTracker(std::sync::Arc::new(Mutex::new(HashMap::new()))))
-        .manage(MultiState(Mutex::new(load_multi_instance_from_settings())))
+        .manage(MultiState::new(load_multi_instance_from_settings()))
         .setup(|app| {
             // ── System tray ───────────────────────────────────────────────
             {
@@ -4411,7 +4692,7 @@ mod tests {
         let encoded_url = urlencoding::encode(&launcher_url).into_owned();
 
         let launch_args = format!(
-            "roblox-player:1+launchmode:play+gameinfo:{}+launchtime:{}+platform:Windows+platfrom:Windows+placelauncherurl:{}+browserTrackerId:{}",
+            "roblox-player:1+launchmode:play+gameinfo:{}+launchtime:{}+platform:Windows+placelauncherurl:{}+browserTrackerId:{}",
             ticket, timestamp, encoded_url, browser_tracker_id
         );
 

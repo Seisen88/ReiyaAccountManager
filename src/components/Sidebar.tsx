@@ -1,17 +1,19 @@
 import { NavLink } from "react-router-dom";
 import { useUpdate } from "../context/UpdateContext";
+import { useLanguage } from "../context/LanguageContext";
 
 const NAV = [
-  { to: "/",             label: "Home",         Icon: IcHome },
-  { to: "/accounts",    label: "Accounts",     Icon: IcAccounts },
-  { to: "/hub",         label: "Hub",          Icon: IcHub },
-  { to: "/utilities",   label: "Utilities",    Icon: IcGrid },
-  { to: "/bootstrapper",label: "Bootstrapper", Icon: IcBootstrapper },
-  { to: "/settings",   label: "Settings",     Icon: IcSettings },
+  { to: "/",             id: "home",         Icon: IcHome },
+  { to: "/accounts",     id: "accounts",     Icon: IcAccounts },
+  { to: "/hub",          id: "hub",          Icon: IcHub },
+  { to: "/utilities",    id: "utilities",    Icon: IcGrid },
+  { to: "/bootstrapper", id: "bootstrapper", Icon: IcBootstrapper },
+  { to: "/settings",     id: "settings",     Icon: IcSettings },
 ];
 
 export default function Sidebar() {
   const { updateInfo, currentVersion, checking } = useUpdate();
+  const { t } = useLanguage();
   const hasUpdate = !!updateInfo;
   const displayVersion = currentVersion ? `v${currentVersion}` : "v1.0.0";
 
@@ -40,7 +42,7 @@ export default function Sidebar() {
           />
           <div>
             <div style={{ fontWeight: 700, fontSize: 14, color: "var(--t1)", lineHeight: 1 }}>Reiya</div>
-            <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 2 }}>Account Manager</div>
+            <div style={{ fontSize: 10, color: "var(--t3)", marginTop: 2 }}>{t("accounts_manager_title")}</div>
           </div>
         </div>
       </div>
@@ -48,10 +50,10 @@ export default function Sidebar() {
       <div className="divider" style={{ marginBottom: 12 }} />
 
       <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--t3)", padding: "0 10px", marginBottom: 6 }}>
-        MENU
+        {t("menu")}
       </p>
 
-      {NAV.map(({ to, label, Icon }) => (
+      {NAV.map(({ to, id, Icon }) => (
         <NavLink
           key={to}
           to={to}
@@ -59,7 +61,7 @@ export default function Sidebar() {
           className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
         >
           <span className="nav-icon"><Icon /></span>
-          {label}
+          {t(id)}
         </NavLink>
       ))}
 
@@ -69,7 +71,7 @@ export default function Sidebar() {
       {/* Socials */}
       <div style={{ marginBottom: 10 }}>
         <p style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", color: "var(--t3)", padding: "0 10px", marginBottom: 8 }}>
-          COMMUNITY
+          {t("community")}
         </p>
         <div style={{ display: "flex", gap: 4, padding: "0 4px", flexWrap: "wrap" }}>
           {SOCIALS.map(({ label, href, Icon, color }) => (
@@ -120,10 +122,10 @@ export default function Sidebar() {
           <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t2)" }}>{displayVersion}</div>
           <div style={{ fontSize: 9, marginTop: 1, color: hasUpdate ? "#fb923c" : "var(--t3)" }}>
             {checking
-              ? "Checking…"
+              ? t("checking")
               : hasUpdate
-                ? `v${updateInfo!.version} available`
-                : "Up to date"}
+                ? t("update_available")
+                : t("up_to_date")}
           </div>
         </div>
         {hasUpdate ? (
@@ -140,10 +142,10 @@ export default function Sidebar() {
               animation: "pulse 2s ease-in-out infinite",
             }}
           >
-            ↑ Update
+            ↑ {t("update_btn")}
           </span>
         ) : (
-          <span className="chip chip-green" style={{ fontSize: 9, padding: "2px 7px" }}>●  Live</span>
+          <span className="chip chip-green" style={{ fontSize: 9, padding: "2px 7px" }}>●  {t("live")}</span>
         )}
       </div>
     </aside>
