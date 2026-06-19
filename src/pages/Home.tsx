@@ -282,7 +282,13 @@ export default function Home() {
       setEvents(evts);
       setSessionHistory(hist);
       setRecentGames(recents);
-      if (accs.length > 0) setSelAccount(accs[0].user_id);
+      // Restore last selected account, fall back to first account
+      const lastAccId = Number(localStorage.getItem("reiya_last_account"));
+      const restoredAcc = lastAccId && accs.find(a => a.user_id === lastAccId) ? lastAccId : accs[0]?.user_id ?? null;
+      if (restoredAcc !== null) setSelAccount(restoredAcc);
+      // Restore last selected game
+      const lastPlace = localStorage.getItem("reiya_last_place_id");
+      if (lastPlace) setLaunchPlaceId(lastPlace);
     }
     load();
 
@@ -1176,7 +1182,7 @@ export default function Home() {
                   checking={!!checkingCookie[a.user_id]}
                   health={healthStatus[a.user_id] ?? "unknown"}
                   onCheck={() => handleCheckCookie(a.user_id)}
-                  onSelect={() => { setSelAccount(a.user_id); setLaunchError(""); }}
+                  onSelect={() => { setSelAccount(a.user_id); localStorage.setItem("reiya_last_account", String(a.user_id)); setLaunchError(""); }}
                   onContextMenu={(e) => handleAccountContextMenu(e, a)} />
               ))}
             </div>
@@ -1229,29 +1235,39 @@ export default function Home() {
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFFFFF", boxShadow: "0 0 8px rgba(255,255,255,0.5)", flexShrink: 0 }} />
             <span style={{ fontSize: 9.5, fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.09em" }}>LAUNCH CONSOLE</span>
           </div>
-          <select value={launchPlaceId} onChange={e => {
-            const val = e.target.value;
-            setLaunchPlaceId(val);
-            setLaunchError("");
-            const game = accountGameOptions.find(g => g.placeId === val);
-            setAccessCode(game?.privateServer || "");
-          }} className="field glass-input" style={{ height: 32, fontSize: 11, cursor: "pointer", flexShrink: 0, background: "#0e0f13", color: "#F0F1F6" }}>
-            <option value="" style={{ background: "#0e0f13", color: "#8B8FA8" }}>— No game / Custom target —</option>
-            {selAccount !== null && getAccGameHistory(selAccount).length > 0 && (
-              <optgroup label="— Account History —" style={{ background: "#0e0f13", color: "#8B8FA8" }}>
-                {getAccGameHistory(selAccount).map(g => <option key={g.placeId} value={g.placeId} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
-              </optgroup>
+          <div style={{ width: "100%", minWidth: 0 }}>
+            <select value={launchPlaceId} onChange={e => {
+              const val = e.target.value;
+              setLaunchPlaceId(val);
+              localStorage.setItem("reiya_last_place_id", val);
+              setLaunchError("");
+              const game = accountGameOptions.find(g => g.placeId === val);
+              setAccessCode(game?.privateServer || "");
+            }} className="field glass-input" style={{ width: "100%", height: 32, fontSize: 11, cursor: "pointer", background: "#0e0f13", color: "#F0F1F6" }}>
+              <option value="" style={{ background: "#0e0f13", color: "#8B8FA8" }}>— No game / Custom target —</option>
+              {selAccount !== null && getAccGameHistory(selAccount).length > 0 && (
+                <optgroup label="— Account History —" style={{ background: "#0e0f13", color: "#8B8FA8" }}>
+                  {getAccGameHistory(selAccount).map(g => <option key={g.placeId} value={g.placeId} title={g.name} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
+                </optgroup>
+              )}
+              {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).length > 0 && (
+                <optgroup label="— All Recent Games —" style={{ background: "#0e0f13", color: "#8B8FA8" }}>
+                  {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).map(g => <option key={g.placeId} value={g.placeId} title={g.name} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
+                </optgroup>
+              )}
+            </select>
+            {/* Full game name shown below dropdown so it never gets clipped */}
+            {launchGame && (
+              <div style={{ marginTop: 4, fontSize: 9.5, color: "var(--t2)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                title={launchGame.name}>
+                {launchGame.name}
+              </div>
             )}
-            {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).length > 0 && (
-              <optgroup label="— All Recent Games —" style={{ background: "#0e0f13", color: "#8B8FA8" }}>
-                {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).map(g => <option key={g.placeId} value={g.placeId} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
-              </optgroup>
-            )}
-          </select>
+          </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, flexShrink: 0 }}>
             <div>
               <div style={{ fontSize: 8.5, color: "var(--t3)", fontWeight: 800, letterSpacing: "0.06em", marginBottom: 3 }}>PLACE ID</div>
-              <input value={launchPlaceId} onChange={e => { setLaunchPlaceId(e.target.value); setLaunchError(""); }} placeholder="7882829745"
+              <input value={launchPlaceId} onChange={e => { setLaunchPlaceId(e.target.value); localStorage.setItem("reiya_last_place_id", e.target.value); setLaunchError(""); }} placeholder="7882829745"
                 className="field glass-input" style={{ height: 28, fontSize: 10.5, padding: "0 9px" }} />
             </div>
             <div>
