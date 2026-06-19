@@ -625,23 +625,41 @@ fn search_versions_dir(versions: &PathBuf) -> Option<PathBuf> {
 #[cfg(windows)]
 fn release_roblox_singleton() {
     use windows_sys::Win32::Foundation::HANDLE;
-    use windows_sys::Win32::System::Threading::{OpenMutexW, ReleaseMutex, OpenEventW};
+    use windows_sys::Win32::System::Threading::{OpenMutexW, OpenEventW};
+    use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleA, GetProcAddress};
     use windows_sys::Win32::Foundation::CloseHandle;
 
-    let names: &[&str] = &["ROBLOX_singletonMutex", "ROBLOX_singletonEvent"];
-    for name in names {
-        let wide: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe {
-            // MUTEX_ALL_ACCESS = 0x1F0001, EVENT_ALL_ACCESS = 0x1F0003
-            let h: HANDLE = OpenMutexW(0x1F0001, 0, wide.as_ptr());
-            if h != std::ptr::null_mut() {
-                ReleaseMutex(h);
-                CloseHandle(h);
+    // NtReleaseMutant is the kernel primitive underneath ReleaseMutex.
+    // Unlike ReleaseMutex, it does NOT enforce thread-ownership, so we can
+    // release a mutex owned by another process (e.g. the already-running Roblox).
+    type NtReleaseMutantFn = unsafe extern "system" fn(HANDLE, *mut i32) -> i32;
+
+    let nt_release: Option<NtReleaseMutantFn> = unsafe {
+        let ntdll = GetModuleHandleA(b"ntdll.dll\0".as_ptr());
+        if ntdll != std::ptr::null_mut() {
+            GetProcAddress(ntdll, b"NtReleaseMutant\0".as_ptr())
+                .map(|f| std::mem::transmute(f))
+        } else {
+            None
+        }
+    };
+
+    unsafe {
+        // Release Roblox's singleton mutex so a second instance can acquire it
+        let mutex_name: Vec<u16> = "ROBLOX_singletonMutex\0".encode_utf16().collect();
+        let h: HANDLE = OpenMutexW(0x1F0001, 0, mutex_name.as_ptr());
+        if h != std::ptr::null_mut() {
+            if let Some(nt_rel) = nt_release {
+                nt_rel(h, std::ptr::null_mut());
             }
-            let h2: HANDLE = OpenEventW(0x1F0003, 0, wide.as_ptr());
-            if h2 != std::ptr::null_mut() {
-                CloseHandle(h2);
-            }
+            CloseHandle(h);
+        }
+
+        // Close the singleton event handle (prevents early-exit checks in newer Roblox builds)
+        let event_name: Vec<u16> = "ROBLOX_singletonEvent\0".encode_utf16().collect();
+        let h2: HANDLE = OpenEventW(0x1F0003, 0, event_name.as_ptr());
+        if h2 != std::ptr::null_mut() {
+            CloseHandle(h2);
         }
     }
 }
@@ -1099,11 +1117,7 @@ async fn launch_account(
         )
     };
 
-    // Release singleton mutex so a second instance can spawn if enabled
     let multi_active = *multi_state.0.lock().unwrap();
-    if multi_active {
-        release_roblox_singleton();
-    }
 
     if let Some(ref pid_str) = place_id {
         let pid_clone = pid_str.clone();
@@ -1136,7 +1150,7 @@ async fn launch_account(
         // Resolve which launcher to actually use
         let pref = read_launcher_preference();
 
-        let launched = do_launch_with_preference(&pref, &launch_args, &app).await;
+        let launched = do_launch_with_preference(&pref, &launch_args, &app, multi_active).await;
         match launched {
             Ok(Some(pid)) => {
                 {
@@ -2304,7 +2318,7 @@ fn launch_via_protocol(_url: &str) -> Result<(), String> {
     Err("Protocol launching is only supported on Windows".into())
 }
 
-async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::AppHandle) -> Result<Option<u32>, String> {
+async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::AppHandle, multi_active: bool) -> Result<Option<u32>, String> {
     eprintln!("[INFO do_launch_with_preference] Launch preference request - launcher: '{}', args: '{}'", pref, launch_args);
 
     let resolved_pref = if pref == "auto" {
@@ -2324,7 +2338,7 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
 
     match resolved_pref {
         "reiya" => {
-            let pid = ensure_latest_and_launch(app, launch_args).await?;
+            let pid = ensure_latest_and_launch(app, launch_args, multi_active).await?;
             return Ok(pid);
         }
         "official" => {
@@ -2341,6 +2355,7 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             })?;
             #[cfg(target_os = "windows")]
             {
+                if multi_active { release_roblox_singleton(); }
                 let pid = launch_detached(&exe, launch_args)?;
                 return Ok(pid);
             }
@@ -2534,6 +2549,7 @@ async fn install_roblox_for_launch(app: &tauri::AppHandle, version_hash: &str) -
 async fn ensure_latest_and_launch(
     app: &tauri::AppHandle,
     launch_args: &str,
+    multi_active: bool,
 ) -> Result<Option<u32>, String> {
     if let Some(existing) = app.get_webview_window("launch_progress") {
         let _ = existing.close();
@@ -2614,6 +2630,8 @@ async fn ensure_latest_and_launch(
         percent: 95,
     });
 
+    // Release just before spawn so Roblox acquires the mutex immediately after
+    if multi_active { release_roblox_singleton(); }
     let pid = match launch_detached(&exe, launch_args) {
         Ok(p) => p,
         Err(e) => {

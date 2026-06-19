@@ -28,10 +28,10 @@ const APP_SECTIONS = [
   {
     id: "app-options", Icon: SlidersIcon, title: "App Options", accent: "#A78BFA",
     fields: (s: any, u: (k: string, v: any) => void) => (<>
-      <SettingRow label="Check for updates on launch" desc="Queries GitHub on startup for new releases"><ToggleSwitch value={s.CheckForUpdates} onChange={v => u("CheckForUpdates", v)} /></SettingRow>
-      <SettingRow label="Launch app on Windows startup" desc="Adds Reiya to the system startup registry"><ToggleSwitch value={s.RunOnStartup} onChange={v => u("RunOnStartup", v)} /></SettingRow>
-      <SettingRow label="Minimize to System Tray" desc="Hides window to tray instead of taskbar on close"><ToggleSwitch value={s.MinimizeToTray} onChange={v => u("MinimizeToTray", v)} /></SettingRow>
-      <SettingRow label="Show account presence status" desc="Fetches and displays online presence for accounts"><ToggleSwitch value={s.ShowAccountPresence} onChange={v => u("ShowAccountPresence", v)} /></SettingRow>
+      <SettingRow label="Check for updates on launch" desc="Automatically checks for a new version of Reiya every time you open the app."><ToggleSwitch value={s.CheckForUpdates} onChange={v => u("CheckForUpdates", v)} /></SettingRow>
+      <SettingRow label="Launch app on Windows startup" desc="Reiya will start automatically when you log into Windows."><ToggleSwitch value={s.RunOnStartup} onChange={v => u("RunOnStartup", v)} /></SettingRow>
+      <SettingRow label="Close to system tray instead of exiting" desc="When enabled, clicking × hides the window. Use the tray icon to reopen or quit."><ToggleSwitch value={s.MinimizeToTray} onChange={v => u("MinimizeToTray", v)} /></SettingRow>
+      <SettingRow label="Show account presence status" desc="Shows whether each account is currently online or in-game."><ToggleSwitch value={s.ShowAccountPresence} onChange={v => u("ShowAccountPresence", v)} /></SettingRow>
     </>),
   },
   {
@@ -53,6 +53,9 @@ const APP_SECTIONS = [
   {
     id: "ui", Icon: LayoutIcon, title: "UI Preferences", accent: "#60A5FA",
     fields: (s: any, u: (k: string, v: any) => void) => (<>
+      <SettingRow label="Language" desc="Choose the display language for the app.">
+        <SelectInput value={s.Language ?? "en"} onChange={v => u("Language", v)} options={LANGUAGES} />
+      </SettingRow>
       <SettingRow label="Max Recent Games limit" desc="How many recent games to show in the launcher"><NumberInput value={s.MaxRecentGames} onChange={v => u("MaxRecentGames", v)} /></SettingRow>
       <SettingRow label="Region Format" desc="Template for displaying player location"><TextInput value={s.RegionFormat} onChange={v => u("RegionFormat", v)} placeholder="<city>, <countryCode>" /></SettingRow>
       <SettingRow label="Presence Refresh (sec)" desc="How often to re-fetch online presence data"><NumberInput value={s.PresenceRefreshInterval} onChange={v => u("PresenceRefreshInterval", v)} /></SettingRow>
@@ -181,7 +184,7 @@ export default function Settings() {
         CookieHealthIntervalMinutes: 60, AutoRejoinEnabled: false,
         AutoRejoinDelaySeconds: 30, AutoRejoinMaxAttempts: 3,
         SessionHistoryEnabled: true, SessionHistoryMaxRecords: 500,
-        ThemeName: "Default", AccentColor: "#E8E8E8", ColorMode: "Dark",
+        Language: "en", ThemeName: "Default", AccentColor: "#E8E8E8", ColorMode: "Dark",
         ToastNotificationsEnabled: true, DisconnectAlertEnabled: true,
         LaunchSuccessAlert: false, SoundAlertsEnabled: false,
         AppLockEnabled: false, AppLockOnMinimize: false, AppLockPinHash: "",
@@ -444,5 +447,46 @@ function TextInput({ value, onChange, placeholder, wide }: { value: string; onCh
       placeholder={placeholder}
       style={{ width: wide ? 260 : 160, padding: "6px 10px", fontSize: 11.5, outline: "none" }}
     />
+  );
+}
+
+const LANGUAGES = [
+  { value: "en",    label: "English" },
+  { value: "es",    label: "Español" },
+  { value: "pt",    label: "Português" },
+  { value: "fr",    label: "Français" },
+  { value: "de",    label: "Deutsch" },
+  { value: "it",    label: "Italiano" },
+  { value: "nl",    label: "Nederlands" },
+  { value: "pl",    label: "Polski" },
+  { value: "ru",    label: "Русский" },
+  { value: "tr",    label: "Türkçe" },
+  { value: "ar",    label: "العربية" },
+  { value: "ja",    label: "日本語" },
+  { value: "ko",    label: "한국어" },
+  { value: "zh-cn", label: "中文 (简体)" },
+  { value: "zh-tw", label: "中文 (繁體)" },
+  { value: "id",    label: "Bahasa Indonesia" },
+  { value: "ms",    label: "Bahasa Melayu" },
+  { value: "th",    label: "ภาษาไทย" },
+  { value: "vi",    label: "Tiếng Việt" },
+  { value: "tl",    label: "Filipino" },
+];
+
+function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        width: 160, padding: "6px 10px", fontSize: 11.5, outline: "none",
+        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 8, color: "var(--t1)", cursor: "pointer",
+        appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.3)'/%3E%3C/svg%3E")`,
+        backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
+      }}
+    >
+      {options.map(o => <option key={o.value} value={o.value} style={{ background: "#0e0f13" }}>{o.label}</option>)}
+    </select>
   );
 }

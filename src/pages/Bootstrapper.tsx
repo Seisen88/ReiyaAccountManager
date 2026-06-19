@@ -233,10 +233,10 @@ function BootstrapperTab({ flagsCount, onSwitchTab }: { flagsCount: number; onSw
             <SectionHeader icon={<ActivityIcon size={12} color="var(--t3)" />} title="HOW IT WORKS" accent="var(--t3)" />
             <div style={{ marginTop: 10 }}>
               {[
-                { n: "01", a: "Check",   d: "Queries Roblox API for the latest client version hash." },
-                { n: "02", a: "Pull",    d: "Downloads changed packages from the Roblox CDN." },
-                { n: "03", a: "Extract", d: "Installs files to local version subdirectories." },
-                { n: "04", a: "Bind",    d: "Writes registry protocols for local launching." },
+                { n: "01", a: "Check",   d: "Reiya checks if Roblox has a newer version available and compares it to what you have installed." },
+                { n: "02", a: "Download", d: "Only the files that changed are downloaded — so updates are fast and don't waste data." },
+                { n: "03", a: "Install",  d: "The new files are unpacked and placed in the right folders on your PC automatically." },
+                { n: "04", a: "Connect",  d: "Reiya registers itself as your Roblox launcher so clicking Play in any browser opens through it." },
               ].map(({ n, a, d }) => (
                 <div key={n} style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                   <span style={{ fontSize: 9, fontWeight: 900, color: "rgba(255,255,255,0.12)", fontFamily: "monospace", minWidth: 16 }}>{n}</span>
