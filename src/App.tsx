@@ -14,20 +14,13 @@ import Onboarding    from "./pages/Onboarding";
 import KeyGate       from "./pages/KeyGate";
 import UpdatePrompt  from "./pages/UpdatePrompt";
 import { BootstrapperProvider } from "./context/BootstrapperContext";
+import { UpdateProvider, useUpdate } from "./context/UpdateContext";
 
 interface LicenseStatus {
   needs_key: boolean;
   key: string;
   expires_at: string | null;
   reason: "missing" | "expired" | "valid";
-}
-
-interface UpdateInfo {
-  has_update: boolean;
-  version: string;
-  download_url: string;
-  notes: string;
-  current: string;
 }
 
 function AppContent() {
@@ -62,10 +55,10 @@ function AppContent() {
   );
 }
 
-export default function App() {
+function AppInner() {
+  const { updateInfo } = useUpdate();
   const [licenseChecked, setLicenseChecked] = useState(false);
   const [licenseStatus, setLicenseStatus]   = useState<LicenseStatus | null>(null);
-  const [updateInfo, setUpdateInfo]         = useState<UpdateInfo | null>(null);
   const [onboardingDone, setOnboardingDone] = useState(
     () => localStorage.getItem("reiya_onboarding_v1") === "done"
   );
@@ -77,11 +70,6 @@ export default function App() {
         setLicenseStatus({ needs_key: false, key: "", expires_at: null, reason: "valid" });
         setLicenseChecked(true);
       });
-
-    // Check for update in parallel — show prompt only after license resolves
-    invoke<UpdateInfo>("check_for_update")
-      .then(info => { if (info.has_update) setUpdateInfo(info); })
-      .catch(() => {});
   }, []);
 
   if (!licenseChecked) {
@@ -125,3 +113,10 @@ export default function App() {
   );
 }
 
+export default function App() {
+  return (
+    <UpdateProvider>
+      <AppInner />
+    </UpdateProvider>
+  );
+}

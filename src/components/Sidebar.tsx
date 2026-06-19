@@ -1,4 +1,5 @@
 import { NavLink } from "react-router-dom";
+import { useUpdate } from "../context/UpdateContext";
 
 const NAV = [
   { to: "/",             label: "Home",         Icon: IcHome },
@@ -10,6 +11,10 @@ const NAV = [
 ];
 
 export default function Sidebar() {
+  const { updateInfo, currentVersion, checking } = useUpdate();
+  const hasUpdate = !!updateInfo;
+  const displayVersion = currentVersion ? `v${currentVersion}` : "v1.0.0";
+
   return (
     <aside style={{
       width: 210,
@@ -105,16 +110,41 @@ export default function Sidebar() {
       {/* Version pill */}
       <div style={{
         padding: "8px 10px",
-        background: "var(--surface-2)",
+        background: hasUpdate ? "rgba(251,146,60,0.07)" : "var(--surface-2)",
         borderRadius: 10,
-        border: "1px solid var(--border)",
+        border: hasUpdate ? "1px solid rgba(251,146,60,0.35)" : "1px solid var(--border)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
+        transition: "all .2s",
       }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t2)" }}>v1.0.0</div>
-          <div style={{ fontSize: 9, color: "var(--t3)", marginTop: 1 }}>Up to date</div>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "var(--t2)" }}>{displayVersion}</div>
+          <div style={{ fontSize: 9, marginTop: 1, color: hasUpdate ? "#fb923c" : "var(--t3)" }}>
+            {checking
+              ? "Checking…"
+              : hasUpdate
+                ? `v${updateInfo!.version} available`
+                : "Up to date"}
+          </div>
         </div>
-        <span className="chip chip-green" style={{ fontSize: 9, padding: "2px 7px" }}>●  Live</span>
+        {hasUpdate ? (
+          <span
+            className="chip"
+            title={`Update to v${updateInfo!.version}`}
+            style={{
+              fontSize: 9, padding: "2px 7px",
+              background: "rgba(251,146,60,0.15)",
+              color: "#fb923c",
+              border: "1px solid rgba(251,146,60,0.35)",
+              borderRadius: 6,
+              cursor: "default",
+              animation: "pulse 2s ease-in-out infinite",
+            }}
+          >
+            ↑ Update
+          </span>
+        ) : (
+          <span className="chip chip-green" style={{ fontSize: 9, padding: "2px 7px" }}>●  Live</span>
+        )}
       </div>
     </aside>
   );

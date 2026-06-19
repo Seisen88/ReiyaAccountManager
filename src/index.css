@@ -186,6 +186,10 @@ html, body, #root {
 .hide-scroll::-webkit-scrollbar { display: none; }
 .hide-scroll { scrollbar-width: none; -ms-overflow-style: none; }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
 @keyframes pulse-glow {
   0%, 100% { box-shadow: 0 0 5px var(--green), 0 0 10px rgba(52,211,153,0.3); }
   50%       { box-shadow: 0 0 8px var(--green), 0 0 18px rgba(52,211,153,0.5); }
