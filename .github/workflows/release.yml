@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.1)'
+        required: true
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+          fi
+
+      - name: Patch tauri.conf.json version
+        shell: bash
+        run: |
+          python -c "
+          import json, sys
+          with open('src-tauri/tauri.conf.json', 'r') as f:
+              conf = json.load(f)
+          conf['version'] = sys.argv[1]
+          with open('src-tauri/tauri.conf.json', 'w') as f:
+              json.dump(conf, f, indent=2)
+          " "$VERSION"
+
+      - name: Patch Cargo.toml version
+        shell: bash
+        run: |
+          python -c "
+          import sys
+          v = sys.argv[1]
+          with open('src-tauri/Cargo.toml', 'r') as f:
+              lines = f.readlines()
+          done = False
+          for i, line in enumerate(lines):
+              if not done and line.startswith('version = '):
+                  lines[i] = f'version = \"{v}\"\n'
+                  done = True
+          with open('src-tauri/Cargo.toml', 'w') as f:
+              f.writelines(lines)
+          " "$VERSION"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri app
+        run: npm run tauri build
+
+      - name: Find NSIS installer
+        id: installer
+        shell: bash
+        run: |
+          EXE=$(find src-tauri/target/release/bundle/nsis -name "*.exe" | head -1)
+          echo "path=$EXE" >> $GITHUB_OUTPUT
+          echo "name=$(basename $EXE)" >> $GITHUB_OUTPUT
+
+      - name: Upload installer to Supabase Storage
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          FILE="${{ steps.installer.outputs.path }}"
+          DEST_NAME="ReiyaAccountManager-$VERSION-setup.exe"
+
+          curl -fsSL \
+            -X POST \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/octet-stream" \
+            -H "x-upsert: true" \
+            --data-binary @"$FILE" \
+            "$SUPABASE_URL/storage/v1/object/releases/$DEST_NAME"
+
+          echo "DOWNLOAD_URL=$SUPABASE_URL/storage/v1/object/public/releases/$DEST_NAME" >> $GITHUB_ENV
+
+      - name: Upsert release record in Supabase DB
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          curl -fsSL \
+            -X POST \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: resolution=merge-duplicates" \
+            -d "{\"version\":\"$VERSION\",\"download_url\":\"$DOWNLOAD_URL\",\"file_name\":\"ReiyaAccountManager-$VERSION-setup.exe\",\"release_notes\":\"Version $VERSION\"}" \
+            "$SUPABASE_URL/rest/v1/releases"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ steps.installer.outputs.path }}
+          name: v${{ env.VERSION }}
+          tag_name: v${{ env.VERSION }}
+          body: |
+            ## Reiya Account Manager v${{ env.VERSION }}
+
+            ### Download
+            Get the installer from [seistem.vercel.app](https://seistem.vercel.app).
