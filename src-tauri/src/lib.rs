@@ -2860,14 +2860,15 @@ fn get_hwid() -> String { compute_hwid() }
 // ── In-app updater ────────────────────────────────────────────────────────────
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const GITHUB_RELEASES_API: &str = "https://api.github.com/repos/Seisen88/Key-System/releases/latest";
 
 #[derive(serde::Serialize, Clone)]
 struct UpdateInfo {
-    has_update: bool,
-    version:    String,
+    has_update:   bool,
+    version:      String,
     download_url: String,
-    notes:      String,
-    current:    String,
+    notes:        String,
+    current:      String,
 }
 
 fn version_is_newer(latest: &str, current: &str) -> bool {
@@ -2883,39 +2884,33 @@ fn version_is_newer(latest: &str, current: &str) -> bool {
 async fn check_for_update() -> Result<UpdateInfo, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
+        .user_agent("ReiyaAccountManager")
         .build()
         .map_err(|e| e.to_string())?;
 
-    let url = format!(
-        "{}/rest/v1/releases?select=version,download_url,release_notes&order=created_at.desc&limit=1",
-        SUPABASE_URL
-    );
-
     let resp = client
-        .get(&url)
-        .header("apikey", SUPABASE_ANON)
-        .header("Authorization", format!("Bearer {}", SUPABASE_ANON))
+        .get(GITHUB_RELEASES_API)
+        .header("Accept", "application/vnd.github+json")
         .send()
         .await
         .map_err(|e| e.to_string())?;
 
-    let rows: Vec<serde_json::Value> = resp.json().await.map_err(|e| e.to_string())?;
+    let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
 
-    if rows.is_empty() {
-        return Ok(UpdateInfo {
-            has_update: false,
-            version:    APP_VERSION.to_string(),
-            download_url: String::new(),
-            notes:      String::new(),
-            current:    APP_VERSION.to_string(),
-        });
-    }
+    let tag_name = json["tag_name"].as_str().unwrap_or("");
+    let latest_ver = tag_name.trim_start_matches('v').to_string();
 
-    let row          = &rows[0];
-    let latest_ver   = row["version"].as_str().unwrap_or("").to_string();
-    let download_url = row["download_url"].as_str().unwrap_or("").to_string();
-    let notes        = row["release_notes"].as_str().unwrap_or("").to_string();
-    let has_update   = version_is_newer(&latest_ver, APP_VERSION);
+    let download_url = json["assets"]
+        .as_array()
+        .and_then(|arr| arr.iter().find(|a| {
+            a["name"].as_str().map(|n| n.ends_with(".exe")).unwrap_or(false)
+        }))
+        .and_then(|a| a["browser_download_url"].as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let notes      = json["body"].as_str().unwrap_or("").to_string();
+    let has_update = !latest_ver.is_empty() && version_is_newer(&latest_ver, APP_VERSION);
 
     Ok(UpdateInfo { has_update, version: latest_ver, download_url, notes, current: APP_VERSION.to_string() })
 }

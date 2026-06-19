@@ -84,70 +84,19 @@ jobs:
           echo "path=$EXE" >> $GITHUB_OUTPUT
           echo "name=$(basename "$EXE")" >> $GITHUB_OUTPUT
 
-      - name: Create Supabase Storage bucket (if missing)
+      - name: Publish release to Key-System (public repo)
         shell: bash
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: |
-          curl -s -o /dev/null \
-            -X POST \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            -H "Content-Type: application/json" \
-            -d '{"id":"releases","name":"releases","public":true}' \
-            "$SUPABASE_URL/storage/v1/bucket" || true
-
-      - name: Upload installer to Supabase Storage
-        shell: bash
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GH_TOKEN: ${{ secrets.KEY_SYSTEM_PAT }}
         run: |
           EXE="${{ steps.installer.outputs.path }}"
           DEST="ReiyaAccountManager-$VERSION-setup.exe"
+          cp "$EXE" "$DEST"
 
-          HTTP_STATUS=$(curl -s -o /tmp/upload_resp.txt -w "%{http_code}" \
-            -X POST \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            -H "Content-Type: application/octet-stream" \
-            -H "x-upsert: true" \
-            --data-binary "@$EXE" \
-            "$SUPABASE_URL/storage/v1/object/releases/$DEST")
+          gh release create "v$VERSION" "$DEST" \
+            --repo Seisen88/Key-System \
+            --title "Reiya Account Manager v$VERSION" \
+            --notes "## v$VERSION
 
-          echo "Upload HTTP status: $HTTP_STATUS"
-          cat /tmp/upload_resp.txt
-
-          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
-            echo "Upload failed with status $HTTP_STATUS"
-            exit 1
-          fi
-
-          echo "DOWNLOAD_URL=$SUPABASE_URL/storage/v1/object/public/releases/$DEST" >> $GITHUB_ENV
-
-      - name: Upsert release record in Supabase DB
-        shell: bash
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: |
-          curl -fsSL \
-            -X POST \
-            -H "apikey: $SUPABASE_SERVICE_KEY" \
-            -H "Authorization: Bearer $SUPABASE_SERVICE_KEY" \
-            -H "Content-Type: application/json" \
-            -H "Prefer: resolution=merge-duplicates" \
-            -d "{\"version\":\"$VERSION\",\"download_url\":\"$DOWNLOAD_URL\",\"file_name\":\"ReiyaAccountManager-$VERSION-setup.exe\",\"release_notes\":\"Version $VERSION\"}" \
-            "$SUPABASE_URL/rest/v1/releases"
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          files: ${{ steps.installer.outputs.path }}
-          name: v${{ env.VERSION }}
-          tag_name: v${{ env.VERSION }}
-          body: |
-            ## Reiya Account Manager v${{ env.VERSION }}
-
-            ### Download
-            Get the installer from [seistem.vercel.app](https://seistem.vercel.app).
+Download and run the installer to update." \
+            --latest
