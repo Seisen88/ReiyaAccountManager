@@ -2322,8 +2322,41 @@ fn get_settings() -> Result<serde_json::Value, String> {
         return Ok(serde_json::json!({}));
     }
     let content = fs::read_to_string(&settings_path).map_err(|e| e.to_string())?;
-    let val: serde_json::Value = serde_json::from_str(clean_bom(&content)).map_err(|e| e.to_string())?;
-    Ok(val)
+    let trimmed = clean_bom(&content).trim().to_string();
+    if trimmed.is_empty() {
+        return Ok(serde_json::json!({}));
+    }
+    serde_json::from_str(&trimmed).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn verify_pin(pin: String) -> bool {
+    use sha2::Digest;
+    let settings_path = data_dir().join("settings.json");
+    let stored_hash = fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(clean_bom(&s)).ok())
+        .and_then(|v| v.get("AppLockPinHash").and_then(|h| h.as_str()).map(|s| s.to_string()))
+        .unwrap_or_default();
+    if stored_hash.is_empty() { return true; }
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(pin.as_bytes());
+    format!("{:x}", hasher.finalize()) == stored_hash
+}
+
+#[tauri::command]
+async fn send_discord_webhook(url: String, payload: serde_json::Value) -> Result<(), String> {
+    if url.is_empty() { return Ok(()); }
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    client.post(&url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -4184,6 +4217,216 @@ fn get_fastflag_presets() -> Vec<FastFlagPreset> {
                 "DFIntCullFactorPixelThresholdShadowMapLowQuality": 2147483647
             }),
         },
+        FastFlagPreset {
+            id: "potato_mode".into(),
+            name: "Potato Mode".into(),
+            description: "Every performance optimization combined — lowest possible quality for maximum FPS on weak hardware.".into(),
+            category: "Performance".into(),
+            flags: serde_json::json!({
+                "FFlagTaskSchedulerLimitTargetFps": false,
+                "DFIntTaskSchedulerTargetFps": 9999,
+                "DFIntDebugFRMQualityLevelOverride": 1,
+                "FIntRenderShadowIntensity": 0,
+                "DFIntCSGLevelOfDetailSwitchingDistance": 0,
+                "DFIntCSGLevelOfDetailSwitchingDistanceFull": 0,
+                "FIntDebugForceMSAASamples": 0,
+                "DFFlagDisablePostFx": true,
+                "DFIntRenderLocalLightFadeMax": 1,
+                "DFIntCullFactorPixelThresholdShadowMapHighQuality": 2147483647,
+                "DFIntCullFactorPixelThresholdShadowMapLowQuality": 2147483647,
+                "DFFlagDebugForceFutureIsBrightPhase2": false,
+                "FFlagDebugForceFutureLighting": false,
+                "FFlagDebugDisableTelemetryEphemeralCounter": true,
+                "FFlagDebugDisableTelemetryEphemeralStat": true,
+                "FFlagDebugDisableTelemetryEventIngest": true,
+                "FFlagDebugDisableTelemetryPoint": true,
+                "FFlagDebugDisableTelemetryV2Counter": true,
+                "FFlagDebugDisableTelemetryV2Event": true,
+                "FFlagDebugDisableTelemetryV2Stat": true
+            }),
+        },
+        FastFlagPreset {
+            id: "disable_post_fx".into(),
+            name: "No Post-Processing Effects".into(),
+            description: "Disables bloom, depth-of-field, and motion blur without changing other graphics settings.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "DFFlagDisablePostFx": true
+            }),
+        },
+        FastFlagPreset {
+            id: "high_fps".into(),
+            name: "Max FPS (9999 Target)".into(),
+            description: "Removes the FPS cap entirely and sets the scheduler target to 9999 for maximum smoothness.".into(),
+            category: "Performance".into(),
+            flags: serde_json::json!({
+                "FFlagTaskSchedulerLimitTargetFps": false,
+                "DFIntTaskSchedulerTargetFps": 9999
+            }),
+        },
+        FastFlagPreset {
+            id: "hardware_cursor".into(),
+            name: "Hardware Cursor".into(),
+            description: "Uses the OS hardware cursor instead of Roblox's software-rendered cursor — reduces click latency.".into(),
+            category: "Misc".into(),
+            flags: serde_json::json!({
+                "FFlagEnableHardwareCursor": true
+            }),
+        },
+        FastFlagPreset {
+            id: "full_privacy".into(),
+            name: "Full Privacy Mode".into(),
+            description: "Disables all telemetry, analytics, and voice chat — nothing is sent to Roblox's data collection.".into(),
+            category: "Privacy".into(),
+            flags: serde_json::json!({
+                "FFlagDebugDisableTelemetryEphemeralCounter": true,
+                "FFlagDebugDisableTelemetryEphemeralStat": true,
+                "FFlagDebugDisableTelemetryEventIngest": true,
+                "FFlagDebugDisableTelemetryPoint": true,
+                "FFlagDebugDisableTelemetryV2Counter": true,
+                "FFlagDebugDisableTelemetryV2Event": true,
+                "FFlagDebugDisableTelemetryV2Stat": true,
+                "DFFlagVoiceChatEnabledForAllUsers": false,
+                "FFlagEnableVoiceChat": false
+            }),
+        },
+        FastFlagPreset {
+            id: "no_msaa".into(),
+            name: "No Anti-Aliasing (MSAA Off)".into(),
+            description: "Disables MSAA anti-aliasing for better performance at the cost of jagged edges.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntDebugForceMSAASamples": 0
+            }),
+        },
+        FastFlagPreset {
+            id: "msaa_8x".into(),
+            name: "Maximum Anti-Aliasing (MSAA 8x)".into(),
+            description: "Enables 8x MSAA for the smoothest possible edges — requires a powerful GPU.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntDebugForceMSAASamples": 8
+            }),
+        },
+        FastFlagPreset {
+            id: "minimal_lighting".into(),
+            name: "Minimal Lighting".into(),
+            description: "Combines legacy voxel lighting and all shadow options disabled — big FPS boost in lit environments.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntRenderShadowIntensity": 0,
+                "DFIntCullFactorPixelThresholdShadowMapHighQuality": 2147483647,
+                "DFIntCullFactorPixelThresholdShadowMapLowQuality": 2147483647,
+                "DFFlagDebugForceFutureIsBrightPhase2": false,
+                "FFlagDebugForceFutureLighting": false
+            }),
+        },
+        FastFlagPreset {
+            id: "low_texture_quality".into(),
+            name: "Low Texture Quality".into(),
+            description: "Forces lower-resolution textures to save VRAM and reduce stutters on low-end GPUs.".into(),
+            category: "Performance".into(),
+            flags: serde_json::json!({
+                "FIntDebugTextureManagerSkipMips": 8
+            }),
+        },
+        FastFlagPreset {
+            id: "high_texture_quality".into(),
+            name: "High Texture Quality".into(),
+            description: "Loads full-resolution textures for crisper visuals — requires ample VRAM.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntDebugTextureManagerSkipMips": 0
+            }),
+        },
+        FastFlagPreset {
+            id: "disable_ads".into(),
+            name: "Disable In-Experience Ads".into(),
+            description: "Prevents Roblox from loading video and banner advertisements inside games.".into(),
+            category: "Privacy".into(),
+            flags: serde_json::json!({
+                "FFlagAdServiceEnabled": false
+            }),
+        },
+        FastFlagPreset {
+            id: "smooth_terrain".into(),
+            name: "High Quality Terrain".into(),
+            description: "Raises terrain LOD distances so details remain crisp at far distances.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "DFIntCSGLevelOfDetailSwitchingDistance": 1000,
+                "DFIntCSGLevelOfDetailSwitchingDistanceFull": 2000
+            }),
+        },
+        FastFlagPreset {
+            id: "reduce_local_lights".into(),
+            name: "Reduce Dynamic Lighting".into(),
+            description: "Fades out local dynamic lights more aggressively to improve frame times.".into(),
+            category: "Performance".into(),
+            flags: serde_json::json!({
+                "DFIntRenderLocalLightFadeMax": 1,
+                "DFIntRenderLocalLightFadeMin": 0,
+                "DFIntRenderLocalLightUpdateDistanceMax": 20,
+                "DFIntRenderLocalLightUpdateDistanceMin": 10
+            }),
+        },
+        FastFlagPreset {
+            id: "d3d11".into(),
+            name: "Force DirectX 11".into(),
+            description: "Forces Roblox to use the DirectX 11 renderer — more stable on some older GPU drivers.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FFlagDebugGraphicsPreferD3D11": true,
+                "FFlagDebugGraphicsPreferD3D11FL10": false
+            }),
+        },
+        FastFlagPreset {
+            id: "4x_msaa".into(),
+            name: "4x Anti-Aliasing (MSAA 4x)".into(),
+            description: "Forces 4x MSAA for smooth edges on all geometry — best paired with Max Graphics.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntDebugForceMSAASamples": 4
+            }),
+        },
+        FastFlagPreset {
+            id: "future_lighting".into(),
+            name: "Future Lighting (Force On)".into(),
+            description: "Forces the Future lighting engine even in games that use lower quality lighting modes.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "DFFlagDebugForceFutureIsBrightPhase2": true,
+                "FFlagDebugForceFutureLighting": true
+            }),
+        },
+        FastFlagPreset {
+            id: "network_optimize".into(),
+            name: "Network Optimization".into(),
+            description: "Tunes physics replication send rates to reduce jitter and perceived network lag.".into(),
+            category: "Network".into(),
+            flags: serde_json::json!({
+                "DFIntS2PhysicsSenderRate": 30,
+                "DFIntDataSendRate": 30
+            }),
+        },
+        FastFlagPreset {
+            id: "no_msaa".into(),
+            name: "No Anti-Aliasing (MSAA Off)".into(),
+            description: "Disables MSAA for a sharper but jaggier image with a small GPU performance gain.".into(),
+            category: "Graphics".into(),
+            flags: serde_json::json!({
+                "FIntDebugForceMSAASamples": 0
+            }),
+        },
+        FastFlagPreset {
+            id: "disable_ads".into(),
+            name: "Disable In-Experience Ads".into(),
+            description: "Prevents Roblox from loading video and banner advertisements inside games.".into(),
+            category: "Privacy".into(),
+            flags: serde_json::json!({
+                "FFlagAdServiceEnabled": false
+            }),
+        },
     ]
 }
 
@@ -4452,6 +4695,7 @@ pub fn run() {
                                 } else {
                                     let _ = win.show();
                                     let _ = win.set_focus();
+                                    let _ = tray.app_handle().emit("window-restored-from-tray", ());
                                 }
                             }
                         }
@@ -4640,6 +4884,8 @@ pub fn run() {
             clear_license,
             open_key_website,
             get_hwid,
+            verify_pin,
+            send_discord_webhook,
             check_for_update,
             download_and_install_update,
             get_app_version,

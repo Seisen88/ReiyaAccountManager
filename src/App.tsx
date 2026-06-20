@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import TitleBar     from "./components/TitleBar";
 import Sidebar      from "./components/Sidebar";
@@ -13,6 +14,7 @@ import LaunchProgress from "./pages/LaunchProgress";
 import Onboarding    from "./pages/Onboarding";
 import KeyGate       from "./pages/KeyGate";
 import UpdatePrompt  from "./pages/UpdatePrompt";
+import AppLock       from "./pages/AppLock";
 import { BootstrapperProvider } from "./context/BootstrapperContext";
 import { UpdateProvider, useUpdate } from "./context/UpdateContext";
 import { useLanguage } from "./context/LanguageContext";
@@ -64,6 +66,8 @@ function AppInner() {
   const [onboardingDone, setOnboardingDone] = useState(
     () => localStorage.getItem("reiya_onboarding_v1") === "done"
   );
+  const [locked, setLocked]               = useState(false);
+  const [lockOnMinimize, setLockOnMinimize] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -72,11 +76,18 @@ function AppInner() {
     ]).then(([status, settings]) => {
       setLicenseStatus(status);
       setLicenseChecked(true);
-      if (settings?.Language) {
-        setLanguage(settings.Language);
-      }
+      if (settings?.Language) setLanguage(settings.Language);
+      if (settings?.AppLockEnabled) setLocked(true);
+      if (settings?.AppLockOnMinimize) setLockOnMinimize(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (!lockOnMinimize) return;
+    let unlisten: (() => void) | null = null;
+    listen("window-restored-from-tray", () => setLocked(true)).then(u => { unlisten = u; });
+    return () => { if (unlisten) unlisten(); };
+  }, [lockOnMinimize]);
 
   if (!licenseChecked) {
     return (
@@ -100,6 +111,7 @@ function AppInner() {
   return (
     <BrowserRouter>
       <BootstrapperProvider>
+        {locked && <AppLock onUnlocked={() => setLocked(false)} />}
         {/* Update gate — mandatory, shown before everything else once license passes */}
         {!needsKey && updateInfo && (
           <UpdatePrompt info={updateInfo} />

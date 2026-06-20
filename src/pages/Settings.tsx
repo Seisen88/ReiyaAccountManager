@@ -171,6 +171,8 @@ export default function Settings() {
   const [error, setError] = useState("");
   const [originalLanguage, setOriginalLanguage] = useState("en");
   const isSaved = useRef(false);
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsRef = useRef<any>(null);
 
   useEffect(() => { loadSettings(); }, []);
 
@@ -182,54 +184,73 @@ export default function Settings() {
     };
   }, [originalLanguage]);
 
+  const DEFAULTS = {
+    CheckForUpdates: true, SavePasswords: true, DisableAgingAlert: false,
+    HideMultiRobloxAlert: false, RunOnStartup: false, MinimizeToTray: true,
+    AutoRefreshCookies: true, MultiRoblox: true, ShuffleLowestServer: false,
+    UseCustomSettings: false, UseBootstrapperLaunch: false, UnlockFps: false,
+    MaxFps: 120, LaunchDelay: 3.0, MaxRecentGames: 8,
+    RegionFormat: "<city>, <countryCode>", ShowAccountPresence: true,
+    PresenceRefreshInterval: 30, CookieHealthMonitorEnabled: true,
+    CookieHealthIntervalMinutes: 60, AutoRejoinEnabled: false,
+    AutoRejoinDelaySeconds: 30, AutoRejoinMaxAttempts: 3,
+    SessionHistoryEnabled: true, SessionHistoryMaxRecords: 500,
+    Language: "en", ThemeName: "Default", AccentColor: "#E8E8E8", ColorMode: "Dark",
+    ToastNotificationsEnabled: true, DisconnectAlertEnabled: true,
+    LaunchSuccessAlert: false, SoundAlertsEnabled: false,
+    AppLockEnabled: false, AppLockOnMinimize: false, AppLockPinHash: "",
+    AutoDailyBackup: true, GlobalLaunchCooldownSeconds: 0,
+    DailyPlayGoalMinutes: 0, ClipboardCookieDetect: false,
+    DiscordWebhookUrl: "", DeveloperModeEnabled: false,
+    WebServerEnabled: false, WebServerPort: 7963, RequirePassword: false,
+    WebServerPassword: "", AllowGetCookie: true, AllowGetAccounts: true,
+    AllowLaunchAccount: true, AllowAccountModifications: true,
+    DisableImageLoading: false, AllowExternalConnections: false,
+  };
+
   const loadSettings = async () => {
     try {
       const data = await invoke<any>("get_settings");
-      const defaults = {
-        CheckForUpdates: true, SavePasswords: true, DisableAgingAlert: false,
-        HideMultiRobloxAlert: false, RunOnStartup: false, MinimizeToTray: true,
-        AutoRefreshCookies: true, MultiRoblox: true, ShuffleLowestServer: false,
-        UseCustomSettings: false, UseBootstrapperLaunch: false, UnlockFps: false,
-        MaxFps: 120, LaunchDelay: 3.0, MaxRecentGames: 8,
-        RegionFormat: "<city>, <countryCode>", ShowAccountPresence: true,
-        PresenceRefreshInterval: 30, CookieHealthMonitorEnabled: true,
-        CookieHealthIntervalMinutes: 60, AutoRejoinEnabled: false,
-        AutoRejoinDelaySeconds: 30, AutoRejoinMaxAttempts: 3,
-        SessionHistoryEnabled: true, SessionHistoryMaxRecords: 500,
-        Language: "en", ThemeName: "Default", AccentColor: "#E8E8E8", ColorMode: "Dark",
-        ToastNotificationsEnabled: true, DisconnectAlertEnabled: true,
-        LaunchSuccessAlert: false, SoundAlertsEnabled: false,
-        AppLockEnabled: false, AppLockOnMinimize: false, AppLockPinHash: "",
-        AutoDailyBackup: true, GlobalLaunchCooldownSeconds: 0,
-        DailyPlayGoalMinutes: 0, ClipboardCookieDetect: false,
-        DiscordWebhookUrl: "", DeveloperModeEnabled: false,
-        WebServerEnabled: false, WebServerPort: 7963, RequirePassword: false,
-        WebServerPassword: "", AllowGetCookie: true, AllowGetAccounts: true,
-        AllowLaunchAccount: true, AllowAccountModifications: true,
-        DisableImageLoading: false, AllowExternalConnections: false,
-      };
       const loadedLanguage = data?.Language || "en";
       setOriginalLanguage(loadedLanguage);
-      setSettings({ ...defaults, ...data });
-    } catch (e) { setError(String(e)); } finally { setLoading(false); }
+      const merged = { ...DEFAULTS, ...data };
+      settingsRef.current = merged;
+      setSettings(merged);
+    } catch (e) {
+      setError(String(e));
+      const def = { ...DEFAULTS };
+      settingsRef.current = def;
+      setSettings(def);
+    } finally { setLoading(false); }
   };
 
   const handleSave = async () => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     setSaving(true); setError(""); setSaveSuccess(false);
     try {
-      await invoke("save_settings", { settings });
+      await invoke("save_settings", { settings: settingsRef.current });
       isSaved.current = true;
-      setOriginalLanguage(settings.Language || "en");
+      setOriginalLanguage(settingsRef.current?.Language || "en");
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) { setError(String(e)); } finally { setSaving(false); }
   };
 
   const updateField = (key: string, value: any) => {
-    setSettings((prev: any) => ({ ...prev, [key]: value }));
-    if (key === "Language") {
-      setLanguage(value);
-    }
+    const next = { ...settingsRef.current, [key]: value };
+    settingsRef.current = next;
+    setSettings(next);
+    if (key === "Language") setLanguage(value);
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      try {
+        await invoke("save_settings", { settings: settingsRef.current });
+        isSaved.current = true;
+        setOriginalLanguage(settingsRef.current.Language || "en");
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 2000);
+      } catch { /* silent */ }
+    }, 1500);
   };
 
   if (loading) {

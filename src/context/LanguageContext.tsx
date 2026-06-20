@@ -169,6 +169,13 @@ const translations: Record<string, Record<string, string>> = {
     disable_remote_image: "Disable remote image loading",
     allow_lan_wan: "Allow LAN / WAN connections",
 
+    // Settings tab descriptions
+    app_tab_desc: "App behavior, startup, tray, and UI preferences",
+    client_tab_desc: "Roblox client launch options, multi-instance, and cookie management",
+    watchdog_tab_desc: "Auto-rejoin watchdog and session history recording",
+    alerts_tab_desc: "Notifications, sound alerts, and Discord webhook integration",
+    developer_tab_desc: "Local web server, API permissions, and developer tools",
+
     // Settings field descriptions
     check_for_updates_desc: "Automatically checks for a new version of Reiya when the app starts.",
     run_on_startup_desc: "Launches Reiya automatically when Windows starts.",

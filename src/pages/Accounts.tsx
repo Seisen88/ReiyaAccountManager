@@ -1,4 +1,4 @@
-﻿import { useLanguage } from "../context/LanguageContext";
+import { useLanguage } from "../context/LanguageContext";
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -45,6 +45,13 @@ export default function Accounts() {
   const [search,    setSearch]    = useState("");
   const [loading,   setLoading]   = useState(true);
   const [launching, setLaunching] = useState<number | null>(null);
+
+  // Bulk selection
+  const [selected,       setSelected]       = useState<Set<number>>(new Set());
+  const [bulkLaunching,  setBulkLaunching]  = useState(false);
+  const [bulkStatus,     setBulkStatus]     = useState("");
+  const [moveGroupModal, setMoveGroupModal] = useState(false);
+  const [groupInput,     setGroupInput]     = useState("");
 
   const [addMenu,       setAddMenu]       = useState(false);
   const addMenuRef                        = useRef<HTMLDivElement>(null);
@@ -176,7 +183,7 @@ export default function Accounts() {
       setBulkResults(results);
       const data = await invoke<Account[]>("get_accounts");
       setAccounts(data);
-    } catch (e) { setBulkResults([{ preview: "â€”", success: false, username: null, error: String(e) }]); }
+    } catch (e) { setBulkResults([{ preview: "-", success: false, username: null, error: String(e) }]); }
     finally { setBulkAdding(false); }
   };
 
@@ -291,10 +298,78 @@ export default function Accounts() {
     finally { setUtilLoading(false); }
   };
 
+  // ── Bulk actions ──────────────────────────────────────────────────
+  const toggleSelect = (userId: number) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId); else next.add(userId);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(visible.map(a => a.user_id)));
+  const clearSelection = () => setSelected(new Set());
+
+  const handleBulkLaunch = async () => {
+    const targets = accounts.filter(a => selected.has(a.user_id) && a.cookie_status === "Valid");
+    if (targets.length === 0) return;
+    setBulkLaunching(true); setBulkStatus(`Launching ${targets.length} accounts...`);
+    for (const acc of targets) {
+      try {
+        await invoke("launch_account", {
+          userId: acc.user_id, placeId: null, jobId: null, accessCode: null,
+          useBootstrapper: localStorage.getItem("reiya_use_bootstrapper") === "true",
+        });
+      } catch { }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    setBulkLaunching(false); setBulkStatus(`Launched ${targets.length} accounts`);
+    setTimeout(() => setBulkStatus(""), 3000);
+  };
+
+  const handleBulkValidate = async () => {
+    const targets = accounts.filter(a => selected.has(a.user_id));
+    if (targets.length === 0) return;
+    setBulkStatus(`Validating ${targets.length} cookies...`);
+    let updated = [...accounts];
+    for (const acc of targets) {
+      try {
+        const result = await invoke<Account>("validate_cookie", { userId: acc.user_id });
+        updated = updated.map(a => a.user_id === acc.user_id ? result : a);
+      } catch { }
+    }
+    setAccounts(updated);
+    setBulkStatus(`Validated ${targets.length} cookies`);
+    setTimeout(() => setBulkStatus(""), 3000);
+  };
+
+  const handleBulkDelete = async () => {
+    const targets = accounts.filter(a => selected.has(a.user_id));
+    if (targets.length === 0) return;
+    if (!confirm(`Remove ${targets.length} selected account(s)?`)) return;
+    for (const acc of targets) {
+      try { await invoke("remove_account", { userId: acc.user_id }); } catch { }
+    }
+    setAccounts(prev => prev.filter(a => !selected.has(a.user_id)));
+    setSelected(new Set());
+    setBulkStatus("");
+  };
+
+  const handleBulkMoveGroup = async () => {
+    const targets = accounts.filter(a => selected.has(a.user_id));
+    for (const acc of targets) {
+      try { await invoke("set_account_group", { userId: acc.user_id, group: groupInput.trim() }); } catch { }
+    }
+    setAccounts(prev => prev.map(a => selected.has(a.user_id) ? { ...a, group: groupInput.trim() } as any : a));
+    setMoveGroupModal(false); setGroupInput(""); clearSelection();
+    setBulkStatus(`Moved ${targets.length} accounts to group "${groupInput.trim() || "none"}"`);
+    setTimeout(() => setBulkStatus(""), 3000);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a" }}>
 
-      {/* â”€â”€ HEADER â”€â”€ */}
+      {/* â"€â"€ HEADER â"€â"€ */}
       <div style={{
         padding: "18px 24px",
         borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -309,7 +384,7 @@ export default function Accounts() {
               {t("accounts_manager_title")}
             </h1>
             <p style={{ fontSize: 10, fontWeight: 700, color: "var(--t3)", letterSpacing: "0.1em", marginTop: 3 }}>
-              MANAGE Â· LAUNCH Â· VALIDATE ROBLOX ACCOUNTS
+              MANAGE · LAUNCH · VALIDATE ROBLOX ACCOUNTS
             </p>
           </div>
 
@@ -318,6 +393,9 @@ export default function Accounts() {
             <AccountStatPill value={accounts.length} label={t("total").toUpperCase()} color="var(--t1)" />
             <AccountStatPill value={favCount} label={t("favorites").toUpperCase()} color="var(--amber)" />
             <AccountStatPill value={online} label={t("active").toUpperCase()} color="var(--green)" />
+            {selected.size > 0 && (
+              <AccountStatPill value={selected.size} label="SELECTED" color="#A78BFA" />
+            )}
 
             {/* Add Account dropdown */}
             <div ref={addMenuRef} style={{ position: "relative" }}>
@@ -400,7 +478,36 @@ export default function Accounts() {
         </div>
       </div>
 
-      {/* â”€â”€ ACCOUNT LIST â”€â”€ */}
+      {/* ── BULK ACTION BAR ── */}
+      {selected.size > 0 && (
+        <div style={{
+          padding: "10px 24px", display: "flex", alignItems: "center", gap: 10,
+          background: "rgba(167,139,250,0.06)",
+          borderBottom: "1px solid rgba(167,139,250,0.15)",
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "#A78BFA", marginRight: 4 }}>
+            {selected.size} selected
+          </span>
+          <BulkBtn label="Launch All" onClick={handleBulkLaunch} disabled={bulkLaunching} accent="#34D399" />
+          <BulkBtn label="Validate All" onClick={handleBulkValidate} disabled={bulkLaunching} />
+          <BulkBtn label="Move to Group" onClick={() => { setGroupInput(""); setMoveGroupModal(true); }} disabled={bulkLaunching} />
+          <BulkBtn label="Select All" onClick={selectAll} disabled={bulkLaunching} />
+          <BulkBtn label="Delete All" onClick={handleBulkDelete} disabled={bulkLaunching} danger />
+          {bulkStatus && (
+            <span style={{ fontSize: 11, color: "var(--t2)", marginLeft: "auto" }}>{bulkStatus}</span>
+          )}
+          <button
+            onClick={clearSelection}
+            style={{ marginLeft: bulkStatus ? 0 : "auto", background: "none", border: "none", cursor: "pointer", color: "var(--t3)", display: "flex", alignItems: "center", padding: 4, borderRadius: 5 }}
+            title="Clear selection"
+          >
+            <XIcon size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* ── ACCOUNT LIST ── */}
       <div
         className="scroll"
         style={{
@@ -430,6 +537,8 @@ export default function Accounts() {
               key={account.user_id}
               account={account}
               isLaunching={launching === account.user_id}
+              isSelected={selected.has(account.user_id)}
+              onToggleSelect={() => toggleSelect(account.user_id)}
               onToggleFav={() => handleToggleFav(account.user_id)}
               onRemove={() => handleRemove(account.user_id, account.username)}
               onLaunch={() => handleLaunch(account.user_id)}
@@ -445,7 +554,7 @@ export default function Accounts() {
         )}
       </div>
 
-      {/* â”€â”€ MODALS â”€â”€ */}
+      {/* â"€â"€ MODALS â"€â"€ */}
 
       {/* Single Cookie */}
       {showSingle && (
@@ -557,7 +666,7 @@ export default function Accounts() {
             <Avatar name={selectedUtilAccount.username} avatarUrl={selectedUtilAccount.avatar_url} size={40} />
             <div>
               <div style={{ fontSize: 13, fontWeight: 800, color: "var(--t1)" }}>{selectedUtilAccount.display_name}</div>
-              <div style={{ fontSize: 10.5, color: "var(--amber)", fontFamily: "monospace" }}>@{selectedUtilAccount.username} Â· ID {selectedUtilAccount.user_id}</div>
+              <div style={{ fontSize: 10.5, color: "var(--amber)", fontFamily: "monospace" }}>@{selectedUtilAccount.username} · ID {selectedUtilAccount.user_id}</div>
             </div>
           </div>
 
@@ -611,13 +720,64 @@ export default function Accounts() {
           )}
         </AccountModal>
       )}
+
+      {/* Move to Group modal */}
+      {moveGroupModal && (
+        <AccountModal title="Move to Group" onClose={() => setMoveGroupModal(false)}>
+          <p style={{ fontSize: 11, color: "var(--t2)", marginBottom: 14, lineHeight: 1.6 }}>
+            Assign {selected.size} selected account(s) to a group. Leave blank to remove from group.
+          </p>
+          <FieldLabel>GROUP NAME</FieldLabel>
+          <input
+            autoFocus
+            value={groupInput}
+            onChange={e => setGroupInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleBulkMoveGroup(); }}
+            placeholder="e.g. Main, Alts, Farming..."
+            style={{
+              width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              color: "var(--t1)", fontSize: 12, marginBottom: 12,
+            }}
+          />
+          <ModalActions>
+            <ModalBtn label="Cancel" onClick={() => setMoveGroupModal(false)} />
+            <ModalBtn label="Move" onClick={handleBulkMoveGroup} primary />
+          </ModalActions>
+        </AccountModal>
+      )}
     </div>
   );
 }
 
-/* â”€â”€ Account Card â”€â”€ */
-function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, onValidate, onOpenUtilities }: {
-  account: Account; isLaunching: boolean;
+/* ── Bulk Action Button ── */
+function BulkBtn({ label, onClick, disabled, danger, accent }: {
+  label: string; onClick: () => void; disabled?: boolean; danger?: boolean; accent?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
+        border: `1px solid ${danger ? "rgba(248,113,113,0.3)" : accent ? `${accent}40` : "rgba(255,255,255,0.1)"}`,
+        background: danger ? "rgba(248,113,113,0.08)" : accent ? `${accent}14` : "rgba(255,255,255,0.04)",
+        color: danger ? "var(--red)" : accent ?? "var(--t2)",
+        transition: "all .12s",
+      }}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.filter = "brightness(1.2)"; }}
+      onMouseLeave={e => { e.currentTarget.style.filter = "none"; }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/* ── Account Card ── */
+function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggleFav, onRemove, onLaunch, onValidate, onOpenUtilities }: {
+  account: Account; isLaunching: boolean; isSelected: boolean;
+  onToggleSelect: () => void;
   onToggleFav: () => void; onRemove: () => void;
   onLaunch: () => void; onValidate: () => void; onOpenUtilities: () => void;
 }) {
@@ -639,14 +799,31 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
       style={{
         display: "flex", alignItems: "center", gap: 14,
         padding: "14px 18px",
-        background: hovered ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.015)",
-        border: `1px solid ${hovered ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)"}`,
+        background: isSelected
+          ? "rgba(167,139,250,0.06)"
+          : hovered ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.015)",
+        border: `1px solid ${isSelected ? "rgba(167,139,250,0.25)" : hovered ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)"}`,
         borderRadius: 16, transition: "all .15s", cursor: "default",
       }}
     >
+      {/* Checkbox */}
+      <div
+        onClick={onToggleSelect}
+        style={{
+          width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+          border: `2px solid ${isSelected ? "#A78BFA" : "rgba(255,255,255,0.12)"}`,
+          background: isSelected ? "#A78BFA" : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", transition: "all .12s",
+          opacity: hovered || isSelected ? 1 : 0,
+        }}
+      >
+        {isSelected && <CheckIcon size={11} color="#fff" />}
+      </div>
+
       {/* Avatar */}
       <div style={{ position: "relative", flexShrink: 0 }}>
-        <Avatar name={account.username} avatarUrl={account.avatar_url} size={48} />
+        <LazyAvatar name={account.username} avatarUrl={account.avatar_url} size={48} />
         <span style={{
           position: "absolute", bottom: 1, right: 1,
           width: 10, height: 10, borderRadius: "50%",
@@ -662,10 +839,28 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
           <span style={{ fontSize: 13, fontWeight: 800, color: "var(--t1)" }}>{account.display_name}</span>
           {account.is_favorite && <StarIcon size={11} fill="var(--amber)" color="var(--amber)" />}
         </div>
-        <div style={{ fontSize: 11, color: "var(--t2)", marginBottom: 3 }}>
-          @{account.username} <span style={{ color: "var(--t3)" }}>Â·</span> ID: {account.user_id}
+        <div style={{ fontSize: 11, color: "var(--t2)", marginBottom: account.tags?.length || account.notes ? 4 : 3 }}>
+          @{account.username} <span style={{ color: "var(--t3)" }}>·</span> ID: {account.user_id}
         </div>
-        {account.last_played_game && (
+        {/* Tags */}
+        {account.tags && account.tags.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 3 }}>
+            {account.tags.map(tag => (
+              <span key={tag} style={{
+                fontSize: 9, fontWeight: 700, padding: "1px 7px", borderRadius: 4,
+                background: "rgba(96,165,250,0.1)", color: "#60A5FA",
+                border: "1px solid rgba(96,165,250,0.2)",
+              }}>{tag}</span>
+            ))}
+          </div>
+        )}
+        {/* Notes */}
+        {account.notes && (
+          <div style={{ fontSize: 10, color: "var(--t3)", fontStyle: "italic", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {account.notes}
+          </div>
+        )}
+        {!account.notes && account.last_played_game && (
           <div style={{ fontSize: 10, color: "var(--t3)", display: "flex", alignItems: "center", gap: 4 }}>
             <GamepadIcon size={10} color="var(--t3)" />
             {account.last_played_game}
@@ -775,7 +970,7 @@ function AccountCard({ account, isLaunching, onToggleFav, onRemove, onLaunch, on
   );
 }
 
-/* â”€â”€ Stat Pill â”€â”€ */
+/* â"€â"€ Stat Pill â"€â"€ */
 function AccountStatPill({ value, label, color }: { value: number; label: string; color: string }) {
   return (
     <div style={{
@@ -788,7 +983,7 @@ function AccountStatPill({ value, label, color }: { value: number; label: string
   );
 }
 
-/* â”€â”€ Modal wrapper â”€â”€ */
+/* â"€â"€ Modal wrapper â"€â"€ */
 function AccountModal({ title, children, onClose, wide }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
   return (
     <div
@@ -867,7 +1062,7 @@ function ErrorMsg({ msg }: { msg: string }) {
   );
 }
 
-/* â”€â”€ Utility section â”€â”€ */
+/* â"€â"€ Utility section â"€â"€ */
 function UtilSection({ label, Icon, children }: { label: string; Icon: React.ComponentType<any>; children: ReactNode }) {
   return (
     <div style={{
@@ -923,7 +1118,7 @@ function UtilAction({ label, onClick, disabled, danger, fullWidth }: { label: st
   );
 }
 
-/* â”€â”€ Dropdown item â”€â”€ */
+/* â"€â"€ Dropdown item â"€â"€ */
 function DropdownItem({ icon, label, sub, onClick }: { icon: ReactNode; label: string; sub: string; onClick: () => void }) {
   const [hov, setHov] = useState(false);
   return (
@@ -955,7 +1150,7 @@ function DropdownItem({ icon, label, sub, onClick }: { icon: ReactNode; label: s
   );
 }
 
-/* â”€â”€ Avatar â”€â”€ */
+/* â"€â"€ Avatar â"€â"€ */
 function Avatar({ name, avatarUrl, size }: { name: string; avatarUrl: string; size: number }) {
   const [imgFailed, setImgFailed] = useState(false);
   const hue = name.split("").reduce((n, c) => n + c.charCodeAt(0), 0) % 360;
@@ -976,6 +1171,27 @@ function Avatar({ name, avatarUrl, size }: { name: string; avatarUrl: string; si
       fontSize: size * 0.3, fontWeight: 800, color: `hsl(${hue},50%,65%)`,
     }}>
       {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function LazyAvatar({ name, avatarUrl, size }: { name: string; avatarUrl: string; size: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!ref.current) return;
+    const obs = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setVisible(true); obs.disconnect(); }
+    }, { rootMargin: "80px" });
+    obs.observe(ref.current);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={ref} style={{ width: size, height: size }}>
+      {visible
+        ? <Avatar name={name} avatarUrl={avatarUrl} size={size} />
+        : <div style={{ width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+      }
     </div>
   );
 }
