@@ -2329,10 +2329,17 @@ fn get_settings() -> Result<serde_json::Value, String> {
 #[tauri::command]
 fn save_settings(settings: serde_json::Value, state: tauri::State<'_, MultiState>) -> Result<(), String> {
     let settings_path = data_dir().join("settings.json");
-    
+
     // Sync MultiRoblox setting to MultiState
     if let Some(multi) = settings.get("MultiRoblox").and_then(|v| v.as_bool()) {
         state.set_active(multi);
+    }
+
+    // Sync RunOnStartup to Windows registry
+    #[cfg(windows)]
+    {
+        let run_on_startup = settings.get("RunOnStartup").and_then(|v| v.as_bool()).unwrap_or(false);
+        sync_run_on_startup(run_on_startup);
     }
 
     let s = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
@@ -3268,7 +3275,7 @@ async fn download_and_install_update(app: tauri::AppHandle, url: String) -> Resu
     //   3. Wait for installer to finish
     //   4. Relaunch the updated binary
     let script = format!(
-        "@echo off\r\ntimeout /t 3 /nobreak >nul\r\n\"{}\" /S\r\ntimeout /t 5 /nobreak >nul\r\nstart \"\" \"{}\"\r\ndel \"%~0\"\r\n",
+        "@echo off\r\ntimeout /t 3 /nobreak >nul\r\nstart /wait \"\" \"{}\" /S\r\nstart \"\" \"{}\"\r\ndel \"%~0\"\r\n",
         tmp_path.display(),
         current_exe.display(),
     );
@@ -4349,6 +4356,34 @@ fn load_multi_instance_from_settings() -> bool {
     true
 }
 
+fn read_minimize_to_tray() -> bool {
+    let settings_path = data_dir().join("settings.json");
+    if let Ok(content) = fs::read_to_string(settings_path) {
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(clean_bom(&content)) {
+            if let Some(v) = val.get("MinimizeToTray").and_then(|v| v.as_bool()) {
+                return v;
+            }
+        }
+    }
+    true // default: minimize to tray
+}
+
+#[cfg(windows)]
+fn sync_run_on_startup(enable: bool) {
+    use winreg::{enums::{HKEY_CURRENT_USER, KEY_WRITE}, RegKey};
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if let Ok(run_key) = hkcu.open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_WRITE) {
+        if enable {
+            if let Ok(exe_path) = std::env::current_exe() {
+                let path_str = exe_path.to_string_lossy().into_owned();
+                let _ = run_key.set_value("ReiyaAccountManager", &path_str);
+            }
+        } else {
+            let _ = run_key.delete_value("ReiyaAccountManager");
+        }
+    }
+}
+
 // ── Entry point ───────────────────────────────────────────────────────────────
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -4422,6 +4457,22 @@ pub fn run() {
                         }
                     })
                     .build(app)?;
+            }
+
+            // ── Close-to-tray for main window ─────────────────────────────
+            {
+                use tauri::Manager;
+                if let Some(win) = app.get_webview_window("main") {
+                    let win_clone = win.clone();
+                    win.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            if read_minimize_to_tray() {
+                                api.prevent_close();
+                                let _ = win_clone.hide();
+                            }
+                        }
+                    });
+                }
             }
 
             let tracker = app.state::<SessionTracker>().inner().clone();

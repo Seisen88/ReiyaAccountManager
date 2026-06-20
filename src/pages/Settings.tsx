@@ -220,7 +220,6 @@ export default function Settings() {
       await invoke("save_settings", { settings });
       isSaved.current = true;
       setOriginalLanguage(settings.Language || "en");
-      isSaved.current = false;
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) { setError(String(e)); } finally { setSaving(false); }
