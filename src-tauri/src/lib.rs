@@ -4717,6 +4717,132 @@ pub struct DetectedInstalls {
     pub protocol_handler_path: Option<String>, // Raw registry value
 }
 
+// ── Tray Notifications ────────────────────────────────────────────────────────
+
+fn should_notify() -> bool {
+    let path = data_dir().join("settings.json");
+    if let Ok(content) = fs::read_to_string(&path) {
+        let trimmed = clean_bom(&content).trim().to_string();
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&trimmed) {
+            return val.get("ToastNotificationsEnabled").and_then(|v| v.as_bool()).unwrap_or(true);
+        }
+    }
+    true
+}
+
+fn send_notification(app: &tauri::AppHandle, title: &str, body: &str) {
+    if !should_notify() { return; }
+    use tauri_plugin_notification::NotificationExt;
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+// ── Account Import / Export ───────────────────────────────────────────────────
+
+#[tauri::command]
+async fn export_accounts(app: tauri::AppHandle, password: String) -> Result<String, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use aes_gcm::{Aes256Gcm, KeyInit, aead::{Aead, AeadCore, OsRng as AeadOsRng}};
+
+    let accounts_path = data_dir().join("accounts.json");
+    let content = fs::read_to_string(&accounts_path).map_err(|e| e.to_string())?;
+
+    // Derive key from password
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    let key_bytes = hasher.finalize();
+
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let nonce = Aes256Gcm::generate_nonce(&mut AeadOsRng);
+    let encrypted = cipher.encrypt(&nonce, content.as_bytes()).map_err(|_| "Encryption failed".to_string())?;
+
+    let mut bundle = nonce.to_vec();
+    bundle.extend_from_slice(&encrypted);
+    let encoded = base64::engine::general_purpose::STANDARD.encode(&bundle);
+
+    let export_json = serde_json::json!({
+        "version": 1,
+        "app": "reiya",
+        "data": encoded
+    });
+
+    let file_path = app.dialog()
+        .file()
+        .add_filter("Reiya Backup", &["reiya"])
+        .set_file_name("reiya-backup.reiya")
+        .blocking_save_file();
+
+    match file_path {
+        Some(path) => {
+            let path_str = path.to_string();
+            fs::write(&path_str, serde_json::to_string_pretty(&export_json).unwrap())
+                .map_err(|e| e.to_string())?;
+            Ok(path_str)
+        }
+        None => Err("cancelled".into()),
+    }
+}
+
+#[tauri::command]
+async fn import_accounts(app: tauri::AppHandle, password: String) -> Result<usize, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use aes_gcm::{Aes256Gcm, KeyInit, aead::Aead, Nonce};
+
+    let file_path = app.dialog()
+        .file()
+        .add_filter("Reiya Backup", &["reiya"])
+        .blocking_pick_file();
+
+    let Some(path) = file_path else { return Err("cancelled".into()); };
+    let path_str = path.to_string();
+
+    let file_content = fs::read_to_string(&path_str).map_err(|e| e.to_string())?;
+    let envelope: serde_json::Value = serde_json::from_str(&file_content)
+        .map_err(|_| "Invalid backup file".to_string())?;
+
+    let encoded = envelope["data"].as_str().ok_or("Invalid backup format")?;
+    let bundle = base64::engine::general_purpose::STANDARD.decode(encoded)
+        .map_err(|_| "Invalid backup data".to_string())?;
+
+    if bundle.len() < 12 { return Err("Corrupt backup".into()); }
+    let (nonce_bytes, encrypted) = bundle.split_at(12);
+
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    let key_bytes = hasher.finalize();
+
+    let cipher = Aes256Gcm::new_from_slice(&key_bytes).map_err(|e| e.to_string())?;
+    let nonce = Nonce::from_slice(nonce_bytes);
+    let decrypted = cipher.decrypt(nonce, encrypted)
+        .map_err(|_| "Wrong password or corrupt file".to_string())?;
+    let accounts_json = String::from_utf8(decrypted).map_err(|_| "Invalid data in backup".to_string())?;
+
+    let imported: Vec<serde_json::Value> = serde_json::from_str(&accounts_json)
+        .map_err(|_| "Invalid accounts data".to_string())?;
+
+    let accounts_path = data_dir().join("accounts.json");
+    let existing_content = fs::read_to_string(&accounts_path).unwrap_or_else(|_| "[]".into());
+    let mut existing: Vec<serde_json::Value> = serde_json::from_str(&existing_content).unwrap_or_default();
+
+    let existing_ids: std::collections::HashSet<i64> = existing.iter()
+        .filter_map(|a| a["UserId"].as_i64())
+        .collect();
+
+    let mut added = 0usize;
+    for acc in imported {
+        let uid = acc["UserId"].as_i64().unwrap_or(0);
+        if uid > 0 && !existing_ids.contains(&uid) {
+            existing.push(acc);
+            added += 1;
+        }
+    }
+
+    fs::write(&accounts_path, serde_json::to_string_pretty(&existing).unwrap())
+        .map_err(|e| e.to_string())?;
+
+    let _ = app;
+    Ok(added)
+}
+
 #[tauri::command]
 fn detect_roblox_installs() -> DetectedInstalls {
     let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
@@ -4902,6 +5028,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(SessionTracker(std::sync::Arc::new(Mutex::new(HashMap::new()))))
         .manage(MultiState::new(load_multi_instance_from_settings()))
         .setup(|app| {
@@ -5102,6 +5230,11 @@ pub fn run() {
                         });
 
                         let _ = app_handle.emit("session-status-changed", ());
+                        send_notification(
+                            &app_handle,
+                            "Session Ended",
+                            &format!("{} finished playing {} ({} min)", info.username, info.game_name, duration_minutes),
+                        );
                     }
                 }
             });
@@ -5154,6 +5287,8 @@ pub fn run() {
             get_hwid,
             verify_pin,
             send_discord_webhook,
+            export_accounts,
+            import_accounts,
             check_for_update,
             download_and_install_update,
             get_app_version,

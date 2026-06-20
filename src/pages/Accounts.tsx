@@ -69,6 +69,43 @@ export default function Accounts() {
   const [loginLoading,   setLoginLoading]   = useState(false);
   const [loginError,     setLoginError]     = useState("");
 
+  // Import / Export
+  const [showExport, setShowExport] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [exportPwd,  setExportPwd]  = useState("");
+  const [importPwd,  setImportPwd]  = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [exportErr, setExportErr] = useState("");
+  const [importErr, setImportErr] = useState("");
+  const [exportOk,  setExportOk]  = useState("");
+  const [importOk,  setImportOk]  = useState("");
+
+  const handleExport = async () => {
+    if (!exportPwd.trim()) { setExportErr("Enter a password to protect the backup."); return; }
+    setExportLoading(true); setExportErr(""); setExportOk("");
+    try {
+      const path = await invoke<string>("export_accounts", { password: exportPwd });
+      setExportOk(`Saved to: ${path}`);
+      setExportPwd("");
+    } catch (e) {
+      if (String(e) !== "cancelled") setExportErr(String(e));
+    } finally { setExportLoading(false); }
+  };
+
+  const handleImport = async () => {
+    if (!importPwd.trim()) { setImportErr("Enter the backup password."); return; }
+    setImportLoading(true); setImportErr(""); setImportOk("");
+    try {
+      const added = await invoke<number>("import_accounts", { password: importPwd });
+      setImportOk(`Imported ${added} new account${added !== 1 ? "s" : ""}.`);
+      setImportPwd("");
+      await loadAccounts();
+    } catch (e) {
+      if (String(e) !== "cancelled") setImportErr(String(e));
+    } finally { setImportLoading(false); }
+  };
+
   const [selectedUtilAccount, setSelectedUtilAccount] = useState<Account | null>(null);
   const [utilNewDisplayName, setUtilNewDisplayName] = useState("");
   const [utilCurrentPassword, setUtilCurrentPassword] = useState("");
@@ -397,6 +434,42 @@ export default function Accounts() {
               <AccountStatPill value={selected.size} label="SELECTED" color="#A78BFA" />
             )}
 
+            {/* Import / Export */}
+            <button
+              onClick={() => { setImportErr(""); setImportOk(""); setImportPwd(""); setShowImport(true); }}
+              title="Import Backup"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
+                border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)",
+                color: "var(--t2)", cursor: "pointer", transition: "all .12s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              Import
+            </button>
+            <button
+              onClick={() => { setExportErr(""); setExportOk(""); setExportPwd(""); setShowExport(true); }}
+              title="Export Backup"
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
+                border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)",
+                color: "var(--t2)", cursor: "pointer", transition: "all .12s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export
+            </button>
+
             {/* Add Account dropdown */}
             <div ref={addMenuRef} style={{ position: "relative" }}>
               <button
@@ -404,9 +477,9 @@ export default function Accounts() {
                 style={{
                   display: "flex", alignItems: "center", gap: 7,
                   padding: "9px 16px", borderRadius: 10, border: "none",
-                  background: "rgba(232,232,232,0.92)",
-                  color: "#0a0a0a", fontSize: 12, fontWeight: 800, cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(232,232,232,0.25)", transition: "filter .12s",
+                  background: "var(--accent)",
+                  color: "var(--accent-text)", fontSize: 12, fontWeight: 800, cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(232,232,232,0.18)", transition: "filter .12s",
                 }}
                 onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.1)"}
                 onMouseLeave={e => e.currentTarget.style.filter = "none"}
@@ -721,6 +794,76 @@ export default function Accounts() {
         </AccountModal>
       )}
 
+      {/* Export Backup */}
+      {showExport && (
+        <AccountModal title="Export Backup" onClose={() => { if (!exportLoading) setShowExport(false); }}>
+          <p style={{ fontSize: 11, color: "var(--t2)", marginBottom: 16, lineHeight: 1.7 }}>
+            All accounts will be exported to an encrypted <code style={{ color: "var(--amber)", fontFamily: "monospace" }}>.reiya</code> backup file.
+            Choose a strong password — it is required to restore the backup.
+          </p>
+          <FieldLabel>BACKUP PASSWORD</FieldLabel>
+          <input
+            type="password"
+            autoFocus
+            value={exportPwd}
+            onChange={e => setExportPwd(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleExport(); }}
+            placeholder="Enter a password to encrypt the backup"
+            disabled={exportLoading}
+            style={{
+              width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              color: "var(--t1)", fontSize: 12, marginBottom: 12, opacity: exportLoading ? 0.5 : 1,
+            }}
+          />
+          {exportErr && <ErrorMsg msg={exportErr} />}
+          {exportOk && (
+            <div style={{ fontSize: 11, color: "var(--green)", marginBottom: 10, padding: "8px 12px", background: "rgba(52,211,153,0.08)", borderRadius: 9, border: "1px solid rgba(52,211,153,0.2)" }}>
+              {exportOk}
+            </div>
+          )}
+          <ModalActions>
+            <ModalBtn label="Cancel" onClick={() => setShowExport(false)} disabled={exportLoading} />
+            <ModalBtn label={exportLoading ? "Exporting..." : "Export Backup"} onClick={handleExport} primary disabled={exportLoading || !exportPwd.trim()} />
+          </ModalActions>
+        </AccountModal>
+      )}
+
+      {/* Import Backup */}
+      {showImport && (
+        <AccountModal title="Import Backup" onClose={() => { if (!importLoading) setShowImport(false); }}>
+          <p style={{ fontSize: 11, color: "var(--t2)", marginBottom: 16, lineHeight: 1.7 }}>
+            Select a <code style={{ color: "var(--amber)", fontFamily: "monospace" }}>.reiya</code> backup file to restore.
+            Duplicate accounts (matching User ID) will be skipped.
+          </p>
+          <FieldLabel>BACKUP PASSWORD</FieldLabel>
+          <input
+            type="password"
+            autoFocus
+            value={importPwd}
+            onChange={e => setImportPwd(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleImport(); }}
+            placeholder="Enter the backup password"
+            disabled={importLoading}
+            style={{
+              width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
+              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              color: "var(--t1)", fontSize: 12, marginBottom: 12, opacity: importLoading ? 0.5 : 1,
+            }}
+          />
+          {importErr && <ErrorMsg msg={importErr} />}
+          {importOk && (
+            <div style={{ fontSize: 11, color: "var(--green)", marginBottom: 10, padding: "8px 12px", background: "rgba(52,211,153,0.08)", borderRadius: 9, border: "1px solid rgba(52,211,153,0.2)" }}>
+              {importOk}
+            </div>
+          )}
+          <ModalActions>
+            <ModalBtn label="Cancel" onClick={() => setShowImport(false)} disabled={importLoading} />
+            <ModalBtn label={importLoading ? "Importing..." : "Choose File & Import"} onClick={handleImport} primary disabled={importLoading || !importPwd.trim()} />
+          </ModalActions>
+        </AccountModal>
+      )}
+
       {/* Move to Group modal */}
       {moveGroupModal && (
         <AccountModal title="Move to Group" onClose={() => setMoveGroupModal(false)}>
@@ -952,9 +1095,9 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
           background: isLaunching
             ? "rgba(255,255,255,0.04)"
             : isValid
-              ? "rgba(232,232,232,0.92)"
+              ? "var(--accent)"
               : "rgba(255,255,255,0.04)",
-          color: isLaunching ? "var(--t3)" : isValid ? "#0a0a0a" : "var(--t3)",
+          color: isLaunching ? "var(--t3)" : isValid ? "var(--accent-text)" : "var(--t3)",
           fontSize: 12, fontWeight: 800,
           cursor: isLaunching || !isValid ? "not-allowed" : "pointer",
           flexShrink: 0,
@@ -963,7 +1106,7 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
           filter: hovered && isValid && !isLaunching ? "brightness(1.08)" : "none",
         }}
       >
-        <ZapIcon size={12} color={isValid && !isLaunching ? "#0a0a0a" : "var(--t3)"} />
+        <ZapIcon size={12} color={isValid && !isLaunching ? "var(--accent-text)" : "var(--t3)"} />
         {isLaunching ? t("launching_suffix") : t("quick_launch_btn")}
       </button>
     </div>

@@ -61,6 +61,7 @@ function AppContent() {
 function AppInner() {
   const { updateInfo, showUpdateModal, closeUpdateModal } = useUpdate();
   const { t, setLanguage } = useLanguage();
+  const { setAccentColor } = useTheme();
   const [licenseChecked, setLicenseChecked] = useState(false);
   const [licenseStatus, setLicenseStatus]   = useState<LicenseStatus | null>(null);
   const [onboardingDone, setOnboardingDone] = useState(
@@ -77,6 +78,7 @@ function AppInner() {
       setLicenseStatus(status);
       setLicenseChecked(true);
       if (settings?.Language) setLanguage(settings.Language);
+      if (settings?.AccentColor) setAccentColor(settings.AccentColor);
       if (settings?.AppLockEnabled) setLocked(true);
       if (settings?.AppLockOnMinimize) setLockOnMinimize(true);
     });
@@ -132,12 +134,15 @@ function AppInner() {
 }
 
 import { LanguageProvider } from "./context/LanguageContext";
+import { ThemeProvider, useTheme } from "./context/ThemeContext";
 
 export default function App() {
   return (
     <UpdateProvider>
       <LanguageProvider>
-        <AppInner />
+        <ThemeProvider>
+          <AppInner />
+        </ThemeProvider>
       </LanguageProvider>
     </UpdateProvider>
   );

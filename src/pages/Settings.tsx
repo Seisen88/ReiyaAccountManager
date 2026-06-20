@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
+import { applyAccent, ACCENT_PRESETS } from "../context/ThemeContext";
 import {
   ChevronLeftIcon, CheckIcon, LoaderIcon,
   SlidersIcon, ZapIcon, ClockIcon, LayoutIcon,
@@ -241,6 +242,7 @@ export default function Settings() {
     settingsRef.current = next;
     setSettings(next);
     if (key === "Language") setLanguage(value);
+    if (key === "AccentColor") applyAccent(value);
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       try {
@@ -357,6 +359,12 @@ export default function Settings() {
       {/* Settings content — 2 col grid */}
       <div className="scroll" style={{ flex: 1, padding: "20px 28px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, maxWidth: 1100 }}>
+          {settings && activeTab === "app" && (
+            <ThemeSection
+              accentColor={settings.AccentColor ?? "#E8E8E8"}
+              onAccentChange={v => updateField("AccentColor", v)}
+            />
+          )}
           {settings && sections.map((section: any) => (
             <div key={section.id} style={{
               background: "rgba(255,255,255,0.015)",
@@ -514,6 +522,104 @@ const LANGUAGES = [
   { value: "vi",    label: "Tiếng Việt" },
   { value: "tl",    label: "Filipino" },
 ];
+
+function ThemeSection({ accentColor, onAccentChange }: { accentColor: string; onAccentChange: (v: string) => void }) {
+  const [hexInput, setHexInput] = useState(accentColor);
+  useEffect(() => { setHexInput(accentColor); }, [accentColor]);
+
+  const commitHex = (v: string) => {
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) onAccentChange(v);
+  };
+
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)",
+      borderRadius: 14, overflow: "hidden",
+      transition: "border-color .2s",
+    }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"}
+      onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}
+    >
+      <div style={{
+        padding: "12px 18px", borderBottom: "1px solid rgba(255,255,255,0.05)",
+        background: "rgba(167,139,250,0.04)", display: "flex", alignItems: "center", gap: 9,
+      }}>
+        <div style={{
+          width: 26, height: 26, borderRadius: 7,
+          background: "rgba(167,139,250,0.18)", border: "1px solid rgba(167,139,250,0.3)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+          </svg>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em" }}>ACCENT COLOR</span>
+      </div>
+
+      <div style={{ padding: "14px 18px" }}>
+        <div style={{ fontSize: 10, color: "var(--t3)", fontWeight: 700, letterSpacing: "0.08em", marginBottom: 10 }}>PRESETS</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+          {ACCENT_PRESETS.map(p => {
+            const active = accentColor.toLowerCase() === p.value.toLowerCase();
+            return (
+              <button
+                key={p.value}
+                title={p.name}
+                onClick={() => onAccentChange(p.value)}
+                style={{
+                  width: 28, height: 28, borderRadius: 8, border: "none",
+                  background: p.value, cursor: "pointer", position: "relative",
+                  boxShadow: active ? `0 0 0 2px #07080a, 0 0 0 4px ${p.value}` : "none",
+                  transition: "transform .12s, box-shadow .12s",
+                  transform: active ? "scale(1.15)" : "scale(1)",
+                }}
+              >
+                {active && (
+                  <svg style={{ position: "absolute", inset: 0, margin: "auto" }} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={(() => { const r=parseInt(p.value.slice(1,3),16),g=parseInt(p.value.slice(3,5),16),b=parseInt(p.value.slice(5,7),16); return (0.299*r+0.587*g+0.114*b)/255 > 0.55 ? "#0a0a0a" : "#fff"; })()} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ fontSize: 10, color: "var(--t3)", fontWeight: 700, letterSpacing: "0.08em", marginBottom: 8 }}>CUSTOM HEX</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ width: 28, height: 28, borderRadius: 7, background: hexInput, border: "1px solid rgba(255,255,255,0.1)", flexShrink: 0 }} />
+          <input
+            value={hexInput}
+            onChange={e => setHexInput(e.target.value)}
+            onBlur={e => commitHex(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") commitHex(hexInput); }}
+            placeholder="#E8E8E8"
+            maxLength={7}
+            style={{
+              flex: 1, height: 32, padding: "0 10px", borderRadius: 8, outline: "none",
+              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "var(--t1)", fontSize: 12, fontFamily: "monospace",
+              transition: "border-color .15s",
+            }}
+            onFocus={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)"}
+          />
+          <button
+            onClick={() => commitHex(hexInput)}
+            style={{
+              height: 32, padding: "0 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
+              border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)",
+              color: "var(--t2)", cursor: "pointer", transition: "all .12s",
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
