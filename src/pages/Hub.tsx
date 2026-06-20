@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { CATALOG } from "../data/catalog";
@@ -25,7 +25,7 @@ const CAT_COLOR: Record<string, string> = {
   RPG:       "#60A5FA",
   Shooter:   "#F87171",
   Simulator: "#34D399",
-  Strategy:  "#E8E8E8",
+  Strategy:  "var(--accent)",
   Tycoon:    "#FB923C",
 };
 
@@ -79,13 +79,13 @@ export default function Hub() {
   const favCount  = games.filter(g => g.isFavorite).length;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
 
       {/* ── Header ── */}
       <div style={{
         padding: "18px 24px 14px",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        background: "rgba(255,255,255,0.01)",
+        borderBottom: "1px solid var(--g04)",
+        background: "var(--g01)",
         backdropFilter: "blur(12px)",
         flexShrink: 0,
       }}>
@@ -124,13 +124,13 @@ export default function Hub() {
         {/* Executor bar */}
         <div style={{
           display: "flex", alignItems: "center", gap: 10,
-          background: "rgba(255,255,255,0.02)",
-          border: "1px solid rgba(255,255,255,0.05)",
+          background: "var(--g02)",
+          border: "1px solid var(--g05)",
           borderRadius: 12, padding: "10px 14px", marginBottom: 14,
         }}>
           <div style={{
             width: 26, height: 26, borderRadius: 7, flexShrink: 0,
-            background: "rgba(232,232,232,0.12)", border: "1px solid rgba(232,232,232,0.25)",
+            background: "var(--g12)", border: "1px solid var(--g25)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
             <TerminalIcon size={12} color="var(--amber)" />
@@ -149,13 +149,13 @@ export default function Hub() {
             style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "6px 14px", borderRadius: 8, border: "none", flexShrink: 0,
-              background: execCopied ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.04)",
+              background: execCopied ? "rgba(52,211,153,0.12)" : "var(--g04)",
               color: execCopied ? "var(--green)" : "var(--t1)",
               fontSize: 11, fontWeight: 700, cursor: "pointer",
               transition: "all .15s",
             }}
-            onMouseEnter={e => { if (!execCopied) e.currentTarget.style.background = "rgba(255,255,255,0.07)"; }}
-            onMouseLeave={e => { if (!execCopied) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+            onMouseEnter={e => { if (!execCopied) e.currentTarget.style.background = "var(--g07)"; }}
+            onMouseLeave={e => { if (!execCopied) e.currentTarget.style.background = "var(--g04)"; }}
           >
             {execCopied
               ? <><CheckIcon size={11} color="var(--green)" /><span>{t("copied")}</span></>
@@ -174,16 +174,16 @@ export default function Hub() {
               style={{
                 width: "100%", paddingLeft: 32, paddingRight: 12,
                 padding: "8px 12px 8px 32px",
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--g02)",
+                border: "1px solid var(--g05)",
                 borderRadius: 10, color: "var(--t1)", fontSize: 12, outline: "none",
                 transition: "border-color .15s",
               }}
               placeholder={t("search_games")}
               value={search}
               onChange={e => setSearch(e.target.value)}
-              onFocus={e => e.currentTarget.style.borderColor = "rgba(232,232,232,0.4)"}
-              onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)"}
+              onFocus={e => e.currentTarget.style.borderColor = "var(--g35)"}
+              onBlur={e => e.currentTarget.style.borderColor = "var(--g05)"}
             />
           </div>
 
@@ -193,8 +193,8 @@ export default function Hub() {
             style={{
               display: "flex", alignItems: "center", gap: 6,
               padding: "8px 14px", borderRadius: 10, fontSize: 11, fontWeight: 700,
-              border: favOnly ? "1px solid rgba(232,232,232,0.4)" : "1px solid rgba(255,255,255,0.05)",
-              background: favOnly ? "rgba(232,232,232,0.08)" : "rgba(255,255,255,0.02)",
+              border: favOnly ? "1px solid var(--g35)" : "1px solid var(--g05)",
+              background: favOnly ? "var(--g08)" : "var(--g02)",
               color: favOnly ? "var(--amber)" : "var(--t3)",
               cursor: "pointer", transition: "all .15s",
             }}
@@ -206,8 +206,8 @@ export default function Hub() {
           {/* Status segmented control */}
           <div style={{
             display: "flex",
-            background: "rgba(255,255,255,0.02)",
-            border: "1px solid rgba(255,255,255,0.05)",
+            background: "var(--g02)",
+            border: "1px solid var(--g05)",
             borderRadius: 10, padding: 3,
           }}>
             {(["All", "Supported", "Discontinued"] as StatusFilter[]).map(s => {
@@ -216,7 +216,7 @@ export default function Hub() {
               return (
                 <button key={s} onClick={() => setStatusFilter(s)} style={{
                   padding: "5px 12px", borderRadius: 8,
-                  background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                  background: active ? "var(--g06)" : "transparent",
                   color: active ? color : "var(--t3)",
                   border: "none", fontSize: 11, fontWeight: active ? 700 : 500,
                   cursor: "pointer", transition: "all .1s", whiteSpace: "nowrap",
@@ -237,8 +237,8 @@ export default function Hub() {
               <button key={cat} onClick={() => setCategory(cat)} style={{
                 display: "flex", alignItems: "center", gap: 5,
                 padding: "5px 13px", borderRadius: 99,
-                border: active && color ? `1px solid ${color}60` : "1px solid rgba(255,255,255,0.05)",
-                background: active ? (color ? color + "18" : "rgba(255,255,255,0.06)") : "rgba(255,255,255,0.02)",
+                border: active && color ? `1px solid ${color}60` : "1px solid var(--g05)",
+                background: active ? (color ? color + "18" : "var(--g06)") : "var(--g02)",
                 color: active ? (color ?? "var(--t1)") : "var(--t3)",
                 fontSize: 11, fontWeight: active ? 700 : 500, cursor: "pointer",
                 transition: "all .12s",
@@ -275,7 +275,7 @@ export default function Hub() {
             gridColumn: "1 / -1", marginTop: 60,
             textAlign: "center", padding: "40px 20px",
             color: "var(--t3)", fontSize: 12.5,
-            border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 16,
+            border: "1px dashed var(--g06)", borderRadius: 16,
           }}>
             {t("no_games_match_filters")}
           </div>
@@ -323,8 +323,8 @@ function GameCard({ game, thumbnail, thumbLoading, onToggleFav }: {
         aspectRatio: "1 / 1",
         borderRadius: 14,
         overflow: "hidden",
-        background: "rgba(255,255,255,0.02)",
-        border: `1px solid ${hovered ? catColor + "66" : "rgba(255,255,255,0.05)"}`,
+        background: "var(--g02)",
+        border: `1px solid ${hovered ? catColor + "66" : "var(--g05)"}`,
         boxShadow: hovered
           ? `0 0 0 1px ${catColor}22, 0 16px 40px rgba(0,0,0,.55)`
           : "0 2px 8px rgba(0,0,0,.25)",
@@ -454,8 +454,8 @@ function StatPill({ value, label, color }: { value: string; label: string; color
   return (
     <div style={{
       padding: "6px 16px", borderRadius: 10,
-      background: "rgba(255,255,255,0.02)",
-      border: "1px solid rgba(255,255,255,0.05)",
+      background: "var(--g02)",
+      border: "1px solid var(--g05)",
       textAlign: "center",
     }}>
       <div style={{ fontSize: 15, fontWeight: 800, color: color ?? "var(--t1)", lineHeight: 1 }}>{value}</div>

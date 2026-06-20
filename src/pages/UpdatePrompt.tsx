@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -84,15 +84,15 @@ export default function UpdatePrompt({ info, onDismiss }: Props) {
           title="Remind me later"
           style={{
             position: "absolute", top: 18, right: 18,
-            background: "rgba(255,255,255,0.04)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            background: "var(--g04)",
+            border: "1px solid var(--g08)",
             borderRadius: 8, width: 32, height: 32,
             display: "flex", alignItems: "center", justifyContent: "center",
             cursor: "pointer", color: "var(--t3)", fontSize: 16, lineHeight: 1,
             transition: "all .12s",
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t3)"; }}
+          onMouseEnter={e => { e.currentTarget.style.background = "var(--g08)"; e.currentTarget.style.color = "var(--t1)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background = "var(--g04)"; e.currentTarget.style.color = "var(--t3)"; }}
         >
           ✕
         </button>
@@ -156,8 +156,8 @@ export default function UpdatePrompt({ info, onDismiss }: Props) {
           <div style={{
             width: "100%", marginBottom: 24,
             padding: "12px 16px", borderRadius: 12,
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.07)",
+            background: "var(--g03)",
+            border: "1px solid var(--g07)",
             color: "var(--t2)", fontSize: 12, lineHeight: 1.6,
             maxHeight: 80, overflowY: "auto",
           }}>
@@ -170,7 +170,7 @@ export default function UpdatePrompt({ info, onDismiss }: Props) {
           <div style={{ width: "100%", marginBottom: 20 }}>
             <div style={{
               width: "100%", height: 6, borderRadius: 99,
-              background: "rgba(255,255,255,0.07)", overflow: "hidden",
+              background: "var(--g07)", overflow: "hidden",
               marginBottom: 10,
             }}>
               <div style={{

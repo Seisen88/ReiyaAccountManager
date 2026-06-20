@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+﻿import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -50,6 +50,8 @@ interface Session {
   user_id: number | null;
   username: string | null;
   avatar_url: string | null;
+  game_name: string | null;
+  start_time: string | null;
 }
 
 interface EventEntry {
@@ -1131,14 +1133,14 @@ export default function Home() {
     )}
 
     {/* ── TOP HEADER BAR ── */}
-    <div style={{ display: "flex", alignItems: "center", padding: "0 24px", height: 66, borderBottom: "1px solid rgba(255,255,255,0.05)", flexShrink: 0, gap: 20 }}>
+    <div style={{ display: "flex", alignItems: "center", padding: "0 24px", height: 66, borderBottom: "1px solid var(--glass-line)", flexShrink: 0, gap: 20 }}>
       <div style={{ flexShrink: 0 }}>
         <div style={{ fontSize: 9, fontWeight: 700, color: "var(--t3)", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 3 }}>
           {new Date().toLocaleDateString(language === "zh-cn" ? "zh-CN" : language, { weekday: "long", month: "long", day: "numeric" })}
         </div>
         <div style={{ fontSize: 17, fontWeight: 900, color: "var(--t1)", letterSpacing: "-0.5px", lineHeight: 1 }}>{greeting}</div>
       </div>
-      <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.07)", flexShrink: 0 }} />
+      <div style={{ width: 1, height: 28, background: "var(--g07)", flexShrink: 0 }} />
       <div style={{ display: "flex", gap: 6, flex: 1 }}>
         <HeaderStatPill icon={<UserIcon size={11} color="#93C5FD" />} label={t("accounts")} value={String(accounts.length)} sub={`${favorites} ${t("favorites").toLowerCase()}`} />
         <HeaderStatPill icon={<MonitorIcon size={11} color={sessions.length > 0 ? "var(--green)" : "var(--t3)"} />} label={t("live")} value={String(sessions.length)} sub={t("sessions_plural")} valueColor={sessions.length > 0 ? "var(--green)" : undefined} />
@@ -1162,7 +1164,7 @@ export default function Home() {
           </button>
           {addMenu && (
             <div onClick={e => e.stopPropagation()}
-              style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 9999, background: "rgba(14,15,19,0.96)", backdropFilter: "blur(16px)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 4, minWidth: 220, boxShadow: "0 12px 36px rgba(0,0,0,.8)" }}>
+              style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 9999, background: "var(--modal-bg)", backdropFilter: "blur(16px)", border: "1px solid var(--modal-border)", borderRadius: 12, padding: 4, minWidth: 220, boxShadow: "0 12px 36px rgba(0,0,0,.4)" }}>
               <DropdownItem icon={<IconSvg><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></IconSvg>} label={t("manual_login_title")} sub={t("manual_login_sub")} onClick={handleManualLogin} />
               <DropdownItem icon={<IconSvg><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></IconSvg>} label={t("user_pass_combo")} sub={t("user_pass_sub")} onClick={() => { setAddMenu(false); setComboText(""); setLoginError(""); setShowUserPass(true); }} />
               <DropdownItem icon={<IconSvg><rect x="2" y="3" width="20" height="14" rx="2" ry="2" /><line x1="2" y1="10" x2="22" y2="10" /><line x1="6" y1="6" x2="6.01" y2="6" /><line x1="10" y1="6" x2="10.01" y2="6" /></IconSvg>} label={t("clipboard_cookie")} sub={t("cookie_sub")} onClick={handleOpenCookieMenu} />
@@ -1186,11 +1188,11 @@ export default function Home() {
     <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
     {/* LEFT: Accounts panel */}
-    <div style={{ width: 216, borderRight: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", overflow: "hidden", background: "rgba(8,9,12,0.5)", flexShrink: 0 }}>
-      <div style={{ padding: "11px 14px 9px", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+    <div style={{ width: 216, borderRight: "1px solid var(--glass-line)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--panel-bg)", flexShrink: 0 }}>
+      <div style={{ padding: "11px 14px 9px", flexShrink: 0, borderBottom: "1px solid var(--glass-line-2)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <span style={{ fontSize: 9.5, fontWeight: 900, color: "var(--t3)", letterSpacing: "0.08em" }}>{t("accounts").toUpperCase()}</span>
-          <span style={{ fontSize: 9.5, color: "var(--t3)", background: "rgba(255,255,255,0.04)", padding: "1px 8px", borderRadius: 99, fontWeight: 700, border: "1px solid rgba(255,255,255,0.05)" }}>{accounts.length}</span>
+          <span style={{ fontSize: 9.5, color: "var(--t3)", background: "var(--g04)", padding: "1px 8px", borderRadius: 99, fontWeight: 700, border: "1px solid var(--g05)" }}>{accounts.length}</span>
         </div>
       </div>
       <div className="scroll" style={{ flex: 1 }}>
@@ -1203,9 +1205,9 @@ export default function Home() {
             <div key={groupName}>
               {groupName && (
                 <div style={{ padding: "8px 14px 4px", fontSize: 8.5, fontWeight: 900, color: "var(--t3)", letterSpacing: "0.1em", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: 14, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                  <div style={{ width: 14, height: 1, background: "var(--g07)" }} />
                   {groupName}
-                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.07)" }} />
+                  <div style={{ flex: 1, height: 1, background: "var(--g07)" }} />
                 </div>
               )}
               {accs.map(a => (
@@ -1225,11 +1227,39 @@ export default function Home() {
           style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", color: "var(--t3)", fontSize: 11, fontWeight: 700, transition: "color .12s" }}
           onMouseEnter={e => e.currentTarget.style.color = "var(--t2)"}
           onMouseLeave={e => e.currentTarget.style.color = "var(--t3)"}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px dashed rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", border: "1.5px dashed var(--g10)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <PlusIcon size={13} />
           </div>
           <span>{t("add_account_compact")}</span>
         </div>
+      </div>
+
+      {/* Live Sessions — bottom of accounts panel */}
+      <div style={{ flexShrink: 0, borderTop: "1px solid var(--glass-line)", padding: "10px 14px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sessions.length > 0 ? 8 : 0 }}>
+          <span className="section-title" style={{ fontSize: 9.5 }}>
+            <span className="section-dot" style={{ background: sessions.length > 0 ? "var(--green)" : "var(--t3)", animation: sessions.length > 0 ? "pulse-glow 2s ease-in-out infinite" : "none" }} />
+            {t("live_sessions")}
+            {sessions.length > 0 && (
+              <span style={{ fontSize: 8.5, background: "var(--green-dim)", color: "var(--green)", padding: "1px 5px", borderRadius: 99, fontWeight: 800, marginLeft: 4 }}>{sessions.length}</span>
+            )}
+          </span>
+          {sessions.length > 0 && (
+            <button onClick={handleKillAll}
+              style={{ padding: "2px 7px", borderRadius: 5, border: "1px solid rgba(248,113,113,.2)", background: "rgba(248,113,113,0.06)", color: "var(--red)", fontSize: 8.5, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}
+              onMouseEnter={e => (e.currentTarget.style.background = "rgba(248,113,113,0.14)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "rgba(248,113,113,0.06)")}>
+              <PowerIcon size={8} color="var(--red)" /> {t("kill_all")}
+            </button>
+          )}
+        </div>
+        {sessions.length === 0 ? (
+          <div style={{ fontSize: 10, color: "var(--t3)", paddingTop: 4 }}>{t("no_active_sessions_lbl")}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {sessions.map(s => <LiveSessionRow key={s.pid} session={s} onKill={() => handleKillOne(s.pid)} />)}
+          </div>
+        )}
       </div>
     </div>
 
@@ -1237,9 +1267,9 @@ export default function Home() {
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
 
       {/* Launch Console */}
-      <div style={{ display: "flex", height: 192, flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+      <div style={{ display: "flex", height: 192, flexShrink: 0, borderBottom: "1px solid var(--glass-line)" }}>
         {/* Game Thumbnail */}
-        <div style={{ width: 196, position: "relative", overflow: "hidden", flexShrink: 0, borderRight: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ width: 196, position: "relative", overflow: "hidden", flexShrink: 0, borderRight: "1px solid var(--glass-line)" }}>
           {launchThumb ? (
             <>
               <img src={launchThumb} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -1247,7 +1277,7 @@ export default function Home() {
             </>
           ) : (
             <div style={{ width: "100%", height: "100%", background: "var(--surface-2)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <GamepadIcon size={30} color="rgba(255,255,255,0.08)" />
+              <GamepadIcon size={30} color="var(--g08)" />
             </div>
           )}
           <div style={{ position: "absolute", bottom: 10, left: 12, right: 12 }}>
@@ -1257,7 +1287,7 @@ export default function Home() {
                 <div style={{ fontSize: 9, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>{t("by")} {launchGame.creator}</div>
               </>
             ) : (
-              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", fontWeight: 700 }}>{t("no_game_selected")}</div>
+              <div style={{ fontSize: 10, color: "var(--g25)", fontWeight: 700 }}>{t("no_game_selected")}</div>
             )}
           </div>
         </div>
@@ -1266,7 +1296,7 @@ export default function Home() {
         <div style={{ flex: 1, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 9, overflow: "hidden", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#FFFFFF", boxShadow: "0 0 8px rgba(255,255,255,0.5)", flexShrink: 0 }} />
-            <span style={{ fontSize: 9.5, fontWeight: 900, color: "#FFFFFF", letterSpacing: "0.09em" }}>{t("launch_console")}</span>
+            <span style={{ fontSize: 9.5, fontWeight: 900, color: "var(--t1)", letterSpacing: "0.09em" }}>{t("launch_console")}</span>
           </div>
           <div style={{ width: "100%", minWidth: 0 }}>
             <select value={launchPlaceId} onChange={e => {
@@ -1276,16 +1306,16 @@ export default function Home() {
               setLaunchError("");
               const game = accountGameOptions.find(g => g.placeId === val);
               setAccessCode(game?.privateServer || "");
-            }} className="field glass-input" style={{ width: "100%", height: 32, fontSize: 11, cursor: "pointer", background: "#0e0f13", color: "#F0F1F6" }}>
-              <option value="" style={{ background: "#0e0f13", color: "#8B8FA8" }}>{t("no_game_custom_target")}</option>
+            }} className="field glass-input" style={{ width: "100%", height: 32, fontSize: 11, cursor: "pointer" }}>
+              <option value="">{t("no_game_custom_target")}</option>
               {selAccount !== null && getAccGameHistory(selAccount).length > 0 && (
-                <optgroup label={t("account_history_group")} style={{ background: "#0e0f13", color: "#8B8FA8" }}>
-                  {getAccGameHistory(selAccount).map(g => <option key={g.placeId} value={g.placeId} title={g.name} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
+                <optgroup label={t("account_history_group")}>
+                  {getAccGameHistory(selAccount).map(g => <option key={g.placeId} value={g.placeId} title={g.name}>{g.name}</option>)}
                 </optgroup>
               )}
               {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).length > 0 && (
-                <optgroup label={t("all_recent_games_group")} style={{ background: "#0e0f13", color: "#8B8FA8" }}>
-                  {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).map(g => <option key={g.placeId} value={g.placeId} title={g.name} style={{ background: "#0e0f13", color: "#F0F1F6" }}>{g.name}</option>)}
+                <optgroup label={t("all_recent_games_group")}>
+                  {recentGames.filter(g => selAccount === null || !getAccGameHistory(selAccount).some(h => h.placeId === g.placeId)).map(g => <option key={g.placeId} value={g.placeId} title={g.name}>{g.name}</option>)}
                 </optgroup>
               )}
             </select>
@@ -1319,7 +1349,7 @@ export default function Home() {
               const acc = accounts.find(a => a.user_id === selAccount);
               if (!acc) return null;
               return (
-                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 7, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", flexShrink: 0, maxWidth: 140, overflow: "hidden" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 7, background: "var(--g03)", border: "1px solid var(--g06)", flexShrink: 0, maxWidth: 140, overflow: "hidden" }}>
                   {acc.avatar_url
                     ? <img src={acc.avatar_url} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
                     : <div style={{ width: 20, height: 20, borderRadius: "50%", background: "var(--surface-3)", fontSize: 8, fontWeight: 700, color: "var(--t2)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{acc.username.slice(0, 2).toUpperCase()}</div>
@@ -1338,7 +1368,7 @@ export default function Home() {
               </button>
               <button onClick={handleLaunch} disabled={launching || selAccount === null || accounts.length === 0}
                 className="btn glow-btn"
-                style={{ padding: "7px 18px", borderRadius: 7, fontSize: 11.5, fontWeight: 900, letterSpacing: "0.05em", background: launching || selAccount === null ? "rgba(255,255,255,0.04)" : "linear-gradient(135deg, #FFFFFF 0%, #E0E0E0 100%)", color: launching || selAccount === null ? "var(--t3)" : "#07080a", border: launching || selAccount === null ? "1px solid rgba(255,255,255,0.06)" : "none", cursor: launching || selAccount === null ? "not-allowed" : "pointer", opacity: selAccount === null || accounts.length === 0 ? 0.4 : 1, boxShadow: launching || selAccount === null ? "none" : "0 4px 18px rgba(255,255,255,0.18)", display: "flex", alignItems: "center", gap: 6 }}
+                style={{ padding: "7px 18px", borderRadius: 7, fontSize: 11.5, fontWeight: 900, letterSpacing: "0.05em", background: launching || selAccount === null ? "var(--g04)" : "linear-gradient(135deg, #FFFFFF 0%, #E0E0E0 100%)", color: launching || selAccount === null ? "var(--t3)" : "#07080a", border: launching || selAccount === null ? "1px solid var(--g06)" : "none", cursor: launching || selAccount === null ? "not-allowed" : "pointer", opacity: selAccount === null || accounts.length === 0 ? 0.4 : 1, boxShadow: launching || selAccount === null ? "none" : "0 4px 18px var(--g18)", display: "flex", alignItems: "center", gap: 6 }}
                 onMouseEnter={e => { if (!launching && selAccount !== null) e.currentTarget.style.filter = "brightness(1.06)"; }}
                 onMouseLeave={e => { if (!launching && selAccount !== null) e.currentTarget.style.filter = "none"; }}>
                 {launching
@@ -1372,22 +1402,22 @@ export default function Home() {
                   onClick={() => handleSelectRecentGame(g.placeId)}
                   onContextMenu={(e) => handleGameContextMenu(e, g)}
                   title={`${g.name}${hasPrivateServer ? "\n" + t("private_server") : ""}`}
-                  style={{ position: "relative", height: 70, borderRadius: 9, overflow: "hidden", cursor: "pointer", border: `1.5px solid ${isSelected ? "#FFFFFF" : "rgba(255,255,255,0.05)"}`, boxShadow: isSelected ? "0 4px 14px rgba(255,255,255,0.1)" : "none", transition: "all .15s", transform: isSelected ? "translateY(-2px)" : "none" }}
+                  style={{ position: "relative", height: 70, borderRadius: 9, overflow: "hidden", cursor: "pointer", border: `1.5px solid ${isSelected ? "#FFFFFF" : "var(--g05)"}`, boxShadow: isSelected ? "0 4px 14px var(--g10)" : "none", transition: "all .15s", transform: isSelected ? "translateY(-2px)" : "none" }}
                   onMouseEnter={e => { if (!isSelected) e.currentTarget.style.borderColor = "rgba(255,255,255,0.14)"; }}
-                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)"; }}>
+                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.borderColor = "var(--g05)"; }}>
                   {g.iconUrl || thumbs[g.placeId] ? (
                     <img src={g.iconUrl || thumbs[g.placeId]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     <div style={{ width: "100%", height: "100%", background: "var(--surface-3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <GamepadIcon size={18} color="rgba(255,255,255,0.2)" />
+                      <GamepadIcon size={18} color="var(--g20)" />
                     </div>
                   )}
                   <div onClick={(e) => { e.stopPropagation(); setDeleteConfirmModal({ placeId: g.placeId, name: g.name }); }}
-                    style={{ position: "absolute", top: 4, left: 4, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.1)", zIndex: 2 }}>
+                    style={{ position: "absolute", top: 4, left: 4, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--g10)", zIndex: 2 }}>
                     <XIcon size={8} color="var(--red)" />
                   </div>
                   {hasPrivateServer && (
-                    <div style={{ position: "absolute", top: 4, right: 4, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,0.12)", zIndex: 2 }}>
+                    <div style={{ position: "absolute", top: 4, right: 4, width: 16, height: 16, borderRadius: "50%", background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--g12)", zIndex: 2 }}>
                       <LockIcon size={8} color="#FFFFFF" />
                     </div>
                   )}
@@ -1415,19 +1445,19 @@ export default function Home() {
             <AreaChart data={graphData} margin={{ top: 4, right: 4, left: -26, bottom: 0 }}>
               <defs>
                 <linearGradient id="aG" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity={0.12} />
-                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+                  <stop offset="0%" stopColor="var(--chart-line)" stopOpacity={0.12} />
+                  <stop offset="100%" stopColor="var(--chart-line)" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--g03)" vertical={false} />
               <XAxis dataKey="day" tick={{ fill: "var(--t3)", fontSize: 9.5, fontWeight: 600 }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fill: "var(--t3)", fontSize: 9.5, fontWeight: 600 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: "rgba(10,11,16,0.95)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, fontSize: 11 }}
-                labelStyle={{ color: "var(--t2)", fontWeight: 700 }} itemStyle={{ color: "#FFFFFF", fontWeight: 800 }}
+              <Tooltip contentStyle={{ background: "var(--modal-bg)", border: "1px solid var(--modal-border)", borderRadius: 10, fontSize: 11 }}
+                labelStyle={{ color: "var(--t2)", fontWeight: 700 }} itemStyle={{ color: "var(--t1)", fontWeight: 800 }}
                 formatter={(v) => [`${v ?? 0} ${t("sessions_plural")}`, t("sessions_plural")]} />
-              <Area type="monotone" dataKey="sessions" stroke="#FFFFFF" strokeWidth={1.8}
-                fill="url(#aG)" dot={{ fill: "#FFFFFF", r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: "#FFFFFF", r: 5, strokeWidth: 0 }} />
+              <Area type="monotone" dataKey="sessions" stroke="var(--chart-line)" strokeWidth={1.8}
+                fill="url(#aG)" dot={{ fill: "var(--chart-line)", r: 3, strokeWidth: 0 }}
+                activeDot={{ fill: "var(--chart-line)", r: 5, strokeWidth: 0 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1457,15 +1487,15 @@ export default function Home() {
                   {g.thumbnailUrl ? (
                     <img src={g.thumbnailUrl} alt="" style={{ width: 28, height: 28, borderRadius: 6, objectFit: "cover", flexShrink: 0 }} />
                   ) : (
-                    <div style={{ width: 28, height: 28, borderRadius: 6, background: "rgba(255,255,255,0.04)", flexShrink: 0 }} />
+                    <div style={{ width: 28, height: 28, borderRadius: 6, background: "var(--g04)", flexShrink: 0 }} />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "60%" }}>{g.name}</span>
                       <span style={{ fontSize: 10, fontWeight: 800, color: "var(--t2)", flexShrink: 0 }}>{timeStr}</span>
                     </div>
-                    <div style={{ height: 4, borderRadius: 99, background: "rgba(255,255,255,0.05)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: i === 0 ? "linear-gradient(90deg, #818cf8, #a78bfa)" : "rgba(255,255,255,0.18)", transition: "width 0.6s ease" }} />
+                    <div style={{ height: 4, borderRadius: 99, background: "var(--g05)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, borderRadius: 99, background: i === 0 ? "linear-gradient(90deg, #818cf8, #a78bfa)" : "var(--g18)", transition: "width 0.6s ease" }} />
                     </div>
                     <span style={{ fontSize: 9, color: "var(--t3)", marginTop: 2, display: "block" }}>{g.sessions} {g.sessions === 1 ? t("session") : t("sessions_plural")}</span>
                   </div>
@@ -1479,41 +1509,13 @@ export default function Home() {
       </div>{/* end center scroll */}
     </div>{/* end center column */}
 
-    {/* RIGHT: Live sessions + Events */}
-    <div style={{ width: 252, borderLeft: "1px solid rgba(255,255,255,0.05)", display: "flex", flexDirection: "column", overflow: "hidden", background: "rgba(8,9,12,0.5)", flexShrink: 0 }}>
-
-      {/* Live Sessions */}
-      <div style={{ padding: "12px 14px", flexShrink: 0, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: sessions.length > 0 ? 10 : 0 }}>
-          <span className="section-title" style={{ fontSize: 10 }}>
-            <span className="section-dot" style={{ background: sessions.length > 0 ? "var(--green)" : "var(--t3)", animation: sessions.length > 0 ? "pulse-glow 2s ease-in-out infinite" : "none" }} />
-            {t("live_sessions")}
-            {sessions.length > 0 && (
-              <span style={{ fontSize: 9, background: "var(--green-dim)", color: "var(--green)", padding: "1px 6px", borderRadius: 99, fontWeight: 800, marginLeft: 4 }}>{sessions.length}</span>
-            )}
-          </span>
-          {sessions.length > 0 && (
-            <button onClick={handleKillAll}
-              style={{ padding: "3px 9px", borderRadius: 5, border: "1px solid rgba(248,113,113,.2)", background: "rgba(248,113,113,0.06)", color: "var(--red)", fontSize: 9, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
-              onMouseEnter={e => (e.currentTarget.style.background = "rgba(248,113,113,0.14)")}
-              onMouseLeave={e => (e.currentTarget.style.background = "rgba(248,113,113,0.06)")}>
-              <PowerIcon size={9} color="var(--red)" /> {t("kill_all")}
-            </button>
-          )}
-        </div>
-        {sessions.length === 0 ? (
-          <div style={{ fontSize: 10.5, color: "var(--t3)", padding: "6px 0" }}>{t("no_active_sessions_lbl")}</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {sessions.map(s => <LiveSessionRow key={s.pid} session={s} onKill={() => handleKillOne(s.pid)} />)}
-          </div>
-        )}
-      </div>
+    {/* RIGHT: History + Events */}
+    <div style={{ width: 252, borderLeft: "1px solid var(--glass-line)", display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--panel-bg)", flexShrink: 0 }}>
 
       {/* Scrollable: Recent history + Event log */}
       <div className="scroll" style={{ flex: 1 }}>
         {recentActivity.length > 0 && (
-          <div style={{ padding: "12px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--glass-line-2)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <div style={{ width: 3, height: 10, background: "linear-gradient(180deg, #C4B5FD 0%, rgba(196,181,253,0.15) 100%)", borderRadius: 2, flexShrink: 0 }} />
               <span style={{ fontSize: 9, fontWeight: 900, color: "var(--t3)", letterSpacing: "0.08em" }}>{t("recent_history")}</span>
@@ -1546,17 +1548,17 @@ export default function Home() {
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {/* Stat Summary Cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
-              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ background: "var(--g02)", border: "1px solid var(--g05)", borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ fontSize: 9.5, color: "var(--t3)", fontWeight: 800, letterSpacing: "0.06em" }}>{t("total_playtime")}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#FFFFFF", marginTop: 4 }}>{playStatsData.totalPlayTime}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--t1)", marginTop: 4 }}>{playStatsData.totalPlayTime}</div>
               </div>
-              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ background: "var(--g02)", border: "1px solid var(--g05)", borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ fontSize: 9.5, color: "var(--t3)", fontWeight: 800, letterSpacing: "0.06em" }}>{t("total_sessions")}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#FFFFFF", marginTop: 4 }}>{playStatsData.totalSessions}</div>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--t1)", marginTop: 4 }}>{playStatsData.totalSessions}</div>
               </div>
-              <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 12, padding: "12px 16px" }}>
+              <div style={{ background: "var(--g02)", border: "1px solid var(--g05)", borderRadius: 12, padding: "12px 16px" }}>
                 <div style={{ fontSize: 9.5, color: "var(--t3)", fontWeight: 800, letterSpacing: "0.06em" }}>{t("top_account")}</div>
-                <div style={{ fontSize: 20, fontWeight: 900, color: "#FFFFFF", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 4 }} title={playStatsData.topAccount}>
+                <div style={{ fontSize: 20, fontWeight: 900, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 4 }} title={playStatsData.topAccount}>
                   {playStatsData.topAccount}
                 </div>
               </div>
@@ -1567,7 +1569,7 @@ export default function Home() {
               
               {/* By Account */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 850, color: "var(--t2)", letterSpacing: "0.05em", paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.05)", marginBottom: 12 }}>{t("by_account")}</div>
+                <div style={{ fontSize: 11, fontWeight: 850, color: "var(--t2)", letterSpacing: "0.05em", paddingBottom: 8, borderBottom: "1px solid var(--glass-line)", marginBottom: 12 }}>{t("by_account")}</div>
                 {playStatsData.byAccount.length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--t3)", textAlign: "center", padding: 20 }}>{t("no_records_found")}</div>
                 ) : (
@@ -1580,7 +1582,7 @@ export default function Home() {
                               display: "inline-flex", alignItems: "center", justifyContent: "center",
                               width: 18, height: 18, borderRadius: "50%",
                               fontSize: 9.5, fontWeight: 900,
-                              background: x.rank === 1 ? "#FFFFFF" : x.rank === 2 ? "rgba(255,255,255,0.6)" : x.rank === 3 ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)",
+                              background: x.rank === 1 ? "#FFFFFF" : x.rank === 2 ? "rgba(255,255,255,0.6)" : x.rank === 3 ? "var(--g30)" : "var(--g06)",
                               color: x.rank <= 3 ? "#000" : "var(--t2)"
                             }}>
                               {x.rank}
@@ -1588,12 +1590,12 @@ export default function Home() {
                             <span style={{ fontWeight: 750, color: "var(--t1)" }}>{x.name}</span>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <span style={{ fontWeight: 800, color: "#FFFFFF" }}>{x.timeText}</span>
+                            <span style={{ fontWeight: 800, color: "var(--t1)" }}>{x.timeText}</span>
                             <span style={{ fontSize: 9.5, color: "var(--t3)", marginLeft: 6 }}>({x.sessionsLabel})</span>
                           </div>
                         </div>
                         {/* Progress Bar */}
-                        <div style={{ height: 5, width: "100%", background: "rgba(255,255,255,0.03)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ height: 5, width: "100%", background: "var(--g03)", borderRadius: 99, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${x.pct}%`, background: "#FFFFFF", borderRadius: 99, opacity: x.rank === 1 ? 1 : 0.4 }} />
                         </div>
                       </div>
@@ -1604,7 +1606,7 @@ export default function Home() {
 
               {/* By Game */}
               <div>
-                <div style={{ fontSize: 11, fontWeight: 850, color: "var(--t2)", letterSpacing: "0.05em", paddingBottom: 8, borderBottom: "1px solid rgba(255,255,255,0.05)", marginBottom: 12 }}>{t("by_game")}</div>
+                <div style={{ fontSize: 11, fontWeight: 850, color: "var(--t2)", letterSpacing: "0.05em", paddingBottom: 8, borderBottom: "1px solid var(--glass-line)", marginBottom: 12 }}>{t("by_game")}</div>
                 {playStatsData.byGame.length === 0 ? (
                   <div style={{ fontSize: 12, color: "var(--t3)", textAlign: "center", padding: 20 }}>{t("no_records_found")}</div>
                 ) : (
@@ -1617,7 +1619,7 @@ export default function Home() {
                               display: "inline-flex", alignItems: "center", justifyContent: "center",
                               width: 18, height: 18, borderRadius: "50%",
                               fontSize: 9.5, fontWeight: 900,
-                              background: x.rank === 1 ? "#FFFFFF" : x.rank === 2 ? "rgba(255,255,255,0.6)" : x.rank === 3 ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.06)",
+                              background: x.rank === 1 ? "#FFFFFF" : x.rank === 2 ? "rgba(255,255,255,0.6)" : x.rank === 3 ? "var(--g30)" : "var(--g06)",
                               color: x.rank <= 3 ? "#000" : "var(--t2)"
                             }}>
                               {x.rank}
@@ -1627,12 +1629,12 @@ export default function Home() {
                             </span>
                           </div>
                           <div style={{ textAlign: "right" }}>
-                            <span style={{ fontWeight: 800, color: "#FFFFFF" }}>{x.timeText}</span>
+                            <span style={{ fontWeight: 800, color: "var(--t1)" }}>{x.timeText}</span>
                             <span style={{ fontSize: 9.5, color: "var(--t3)", marginLeft: 6 }}>({x.sessionsLabel})</span>
                           </div>
                         </div>
                         {/* Progress Bar */}
-                        <div style={{ height: 5, width: "100%", background: "rgba(255,255,255,0.03)", borderRadius: 99, overflow: "hidden" }}>
+                        <div style={{ height: 5, width: "100%", background: "var(--g03)", borderRadius: 99, overflow: "hidden" }}>
                           <div style={{ height: "100%", width: `${x.pct}%`, background: "#FFFFFF", borderRadius: 99, opacity: x.rank === 1 ? 1 : 0.4 }} />
                         </div>
                       </div>
@@ -1717,7 +1719,7 @@ export default function Home() {
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {["Main", "Alts", "Trading", "Farming"].map(preset => (
-                <button key={preset} onClick={() => setGroupInput(preset)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: groupInput === preset ? "rgba(255,255,255,0.1)" : "transparent", color: groupInput === preset ? "var(--t1)" : "var(--t3)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{preset}</button>
+                <button key={preset} onClick={() => setGroupInput(preset)} style={{ padding: "4px 12px", borderRadius: 7, border: "1px solid var(--g08)", background: groupInput === preset ? "var(--g10)" : "transparent", color: groupInput === preset ? "var(--t1)" : "var(--t3)", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>{preset}</button>
               ))}
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
@@ -1743,13 +1745,13 @@ export default function Home() {
             top: Math.min(accountMenu.y, window.innerHeight - 520),
             left: Math.min(accountMenu.x, window.innerWidth - 220),
             zIndex: 9999,
-            background: "rgba(10, 11, 15, 0.95)",
+            background: "var(--modal-bg)",
             backdropFilter: "blur(12px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
+            border: "1px solid var(--modal-border)",
             borderRadius: 12,
             padding: 4,
             minWidth: 210,
-            boxShadow: "0 12px 36px rgba(0, 0, 0, 0.7)",
+            boxShadow: "0 12px 36px rgba(0, 0, 0, 0.4)",
             maxHeight: "85vh",
             overflowY: "auto"
           }}
@@ -1840,7 +1842,7 @@ export default function Home() {
               }
             }}
           />
-          <div style={{ height: 1, background: "rgba(255, 255, 255, 0.08)", margin: "2px 6px" }} />
+          <div style={{ height: 1, background: "var(--g08)", margin: "2px 6px" }} />
           <DropdownItem
             icon={
               <IconSvg>
@@ -1867,7 +1869,7 @@ export default function Home() {
           <DropdownItem
             icon={
               <IconSvg>
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill={accountMenu.account.safe_launch_enabled ? "rgba(255, 255, 255, 0.15)" : "none"} />
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" fill={accountMenu.account.safe_launch_enabled ? "var(--g15)" : "none"} />
               </IconSvg>
             }
             label={t("toggle_safe_launch_menu")}
@@ -2080,7 +2082,7 @@ export default function Home() {
               await handleCheckCookie(acc.user_id);
             }}
           />
-          <div style={{ height: 1, background: "rgba(255, 255, 255, 0.08)", margin: "2px 6px" }} />
+          <div style={{ height: 1, background: "var(--g08)", margin: "2px 6px" }} />
           <DropdownItem
             icon={<IconSvg><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" /></IconSvg>}
             label={t("copy_cookie_menu")}
@@ -2263,7 +2265,7 @@ export default function Home() {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Set Display Name */}
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 16 }}>
+              <div style={{ borderBottom: "1px solid var(--g06)", paddingBottom: 16 }}>
                 <FieldLabel>{t("display_name_label")}</FieldLabel>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input className="field glass-input" value={utilNewDisplayName} onChange={e => setUtilNewDisplayName(e.target.value)}
@@ -2277,7 +2279,7 @@ export default function Home() {
               </div>
 
               {/* Password */}
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 16 }}>
+              <div style={{ borderBottom: "1px solid var(--g06)", paddingBottom: 16 }}>
                 <FieldLabel>{t("change_password_label")}</FieldLabel>
                 <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                   <input type="password" className="field glass-input" value={utilCurrentPassword} onChange={e => setUtilCurrentPassword(e.target.value)}
@@ -2294,7 +2296,7 @@ export default function Home() {
               </div>
 
               {/* Sessions */}
-              <div style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", paddingBottom: 16 }}>
+              <div style={{ borderBottom: "1px solid var(--g06)", paddingBottom: 16 }}>
                 <FieldLabel>{t("sessions_label")}</FieldLabel>
                 <button onClick={handleSignOutAll} disabled={utilLoading} className="btn"
                   style={{ padding: "0 14px", height: 34, fontSize: 11.5, background: "rgba(248,113,113,0.1)", color: "var(--red)", fontWeight: 800, borderRadius: 8, border: "1px solid rgba(248,113,113,0.25)" }}>
@@ -2348,7 +2350,7 @@ export default function Home() {
               rows={12}
               readOnly
               value={JSON.stringify(dumpAccount, null, 2)}
-              style={{ width: "100%", fontFamily: "monospace", fontSize: 11, resize: "vertical", background: "rgba(255,255,255,0.02)", color: "var(--t2)", padding: 12, outline: "none" }}
+              style={{ width: "100%", fontFamily: "monospace", fontSize: 11, resize: "vertical", background: "var(--g02)", color: "var(--t2)", padding: 12, outline: "none" }}
             />
             <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
               <button onClick={() => setDumpAccount(null)} className="btn btn-ghost" style={{ flex: 1 }}>
@@ -2396,7 +2398,7 @@ function CompactAccountRow({ account, isActive, isSelected, checking, health, on
       style={{
         display: "flex", alignItems: "center", gap: 9, padding: "7px 14px",
         cursor: "pointer",
-        background: isSelected ? "rgba(255,255,255,0.05)" : hov ? "rgba(255,255,255,0.02)" : "transparent",
+        background: isSelected ? "var(--g05)" : hov ? "var(--g02)" : "transparent",
         borderLeft: `2px solid ${isSelected ? "rgba(255,255,255,0.6)" : "transparent"}`,
         transition: "all .12s", userSelect: "none",
       }}>
@@ -2418,14 +2420,14 @@ function CompactAccountRow({ account, isActive, isSelected, checking, health, on
         <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
           <span style={{ fontSize: 9, color: "var(--t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>@{account.username}</span>
           {account.group && (
-            <span style={{ fontSize: 7.5, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "rgba(255,255,255,0.04)", color: "var(--t3)", flexShrink: 0 }}>{account.group}</span>
+            <span style={{ fontSize: 7.5, fontWeight: 800, padding: "1px 5px", borderRadius: 4, background: "var(--g04)", color: "var(--t3)", flexShrink: 0 }}>{account.group}</span>
           )}
         </div>
       </div>
       <button onClick={e => { e.stopPropagation(); onCheck(); }} disabled={checking}
         style={{ flexShrink: 0, padding: "2px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700,
-          border: `1px solid ${isValid ? "rgba(52,211,153,.25)" : isExpired ? "rgba(248,113,113,.25)" : "rgba(255,255,255,0.06)"}`,
-          background: isValid ? "var(--green-dim)" : isExpired ? "var(--red-dim)" : "rgba(255,255,255,0.03)",
+          border: `1px solid ${isValid ? "rgba(52,211,153,.25)" : isExpired ? "rgba(248,113,113,.25)" : "var(--g06)"}`,
+          background: isValid ? "var(--green-dim)" : isExpired ? "var(--red-dim)" : "var(--g03)",
           color: isValid ? "var(--green)" : isExpired ? "var(--red)" : "var(--t3)",
           cursor: checking ? "not-allowed" : "pointer" }}>
         {checking ? "…" : isValid ? "✓" : isExpired ? "!" : "?"}
@@ -2436,7 +2438,7 @@ function CompactAccountRow({ account, isActive, isSelected, checking, health, on
 
 function HeaderStatPill({ icon, label, value, sub, valueColor }: { icon: React.ReactNode; label: string; value: string; sub: string; valueColor?: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 8, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.05)", flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", borderRadius: 8, background: "var(--g03)", border: "1px solid var(--g05)", flexShrink: 0 }}>
       <span style={{ display: "flex", alignItems: "center" }}>{icon}</span>
       <div>
         <div style={{ fontSize: 9, fontWeight: 700, color: "var(--t3)", letterSpacing: "0.06em", lineHeight: 1 }}>{label}</div>
@@ -2466,8 +2468,12 @@ function LiveSessionRow({ session, onKill }: { session: Session; onKill: () => v
         <span style={{ position: "absolute", bottom: 0, right: 0, width: 8, height: 8, borderRadius: "50%", background: "var(--green)", border: "2px solid var(--surface)", animation: "pulse-glow 2s ease-in-out infinite" }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t1)" }}>{session.username ?? "Unknown"}</div>
-        <div style={{ fontSize: 9, color: "var(--t3)" }}>PID {session.pid}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {session.username ?? "Unknown"}
+        </div>
+        <div style={{ fontSize: 9, color: "var(--t3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {session.game_name ?? `PID ${session.pid}`}
+        </div>
       </div>
       <button onClick={onKill} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(248,113,113,.3)", background: "var(--red-dim)", color: "var(--red)", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>
         {t("kill")}
@@ -2501,12 +2507,12 @@ function EventRow({ event }: { event: EventEntry }) {
   const rel   = timeAgo(new Date(event.timestamp), t);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: "1px solid var(--glass-line-2)" }}>
       <span style={{ color, display: "flex", alignItems: "center", justifyContent: "center", width: 14, flexShrink: 0 }}>{icon}</span>
       {event.avatar_url ? (
         <img src={event.avatar_url} alt="" style={{ width: 22, height: 22, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
       ) : (
-        <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(255,255,255,0.03)", flexShrink: 0 }} />
+        <div style={{ width: 22, height: 22, borderRadius: "50%", background: "var(--g03)", flexShrink: 0 }} />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 10.5, color: "var(--t1)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2526,11 +2532,11 @@ function ActivityRow({ record }: { record: SessionRecord }) {
   const ts = timeAgo(new Date(record.start_time), t);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 6px", borderBottom: "1px solid var(--glass-line-2)" }}>
       {record.avatar_url ? (
         <img src={record.avatar_url} alt="" style={{ width: 26, height: 26, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
       ) : (
-        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "var(--t2)", flexShrink: 0 }}>
+        <div style={{ width: 26, height: 26, borderRadius: "50%", background: "var(--g03)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "var(--t2)", flexShrink: 0 }}>
           {record.username.slice(0, 2).toUpperCase()}
         </div>
       )}
@@ -2556,8 +2562,8 @@ function Toggle({ label, value, onChange }: { label: string; value: boolean; onC
     <div style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }} onClick={() => onChange(!value)}>
       <div style={{
         width: 32, height: 18, borderRadius: 99,
-        background: value ? "#FFFFFF" : "rgba(255, 255, 255, 0.05)",
-        border: `1.5px solid ${value ? "#FFFFFF" : "rgba(255, 255, 255, 0.15)"}`,
+        background: value ? "#FFFFFF" : "var(--g05)",
+        border: `1.5px solid ${value ? "#FFFFFF" : "var(--g15)"}`,
         position: "relative", transition: "all .2s cubic-bezier(0.4, 0, 0.2, 1)"
       }}>
         <div style={{
@@ -2588,7 +2594,7 @@ function DropdownItem({ icon, label, sub, onClick }: { icon: React.ReactNode; la
         gap: 10,
         padding: "5px 10px",
         borderRadius: 7,
-        background: hov ? "rgba(255, 255, 255, 0.04)" : "transparent",
+        background: hov ? "var(--g04)" : "transparent",
         cursor: "pointer",
         transition: "all .1s",
         userSelect: "none"
@@ -2640,13 +2646,13 @@ function HomeModal({ title, onClose, wide, children }: HomeModalProps) {
     >
       <div
         style={{
-          background: "linear-gradient(135deg, rgba(10, 11, 15, 0.98) 0%, rgba(5, 6, 8, 0.99) 100%)",
-          border: "1px solid rgba(255, 255, 255, 0.08)",
+          background: "var(--modal-bg)",
+          border: "1px solid var(--modal-border)",
           borderRadius: 20,
           padding: 24,
           width: wide ? 560 : 420,
           maxWidth: "100%",
-          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.8)",
+          boxShadow: "0 24px 60px rgba(0, 0, 0, 0.5)",
           display: "flex",
           flexDirection: "column",
           gap: 16,
@@ -2672,7 +2678,7 @@ function HomeModal({ title, onClose, wide, children }: HomeModalProps) {
               transition: "background 0.15s, color 0.15s",
             }}
             onMouseEnter={e => {
-              e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+              e.currentTarget.style.background = "var(--g05)";
               e.currentTarget.style.color = "var(--t1)";
             }}
             onMouseLeave={e => {

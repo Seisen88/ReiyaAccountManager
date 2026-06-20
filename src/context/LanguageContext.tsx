@@ -17,6 +17,7 @@ const translations: Record<string, Record<string, string>> = {
     hub: "Hub",
     utilities: "Utilities",
     bootstrapper: "Bootstrapper",
+    theme: "Theme",
     settings: "Settings",
     dashboard: "DASHBOARD",
     menu: "MENU",

@@ -209,17 +209,17 @@ html, body, #root {
 
 /* ── Modern Premium UI Overrides ── */
 .glass-container {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
+  background: linear-gradient(135deg, var(--glass-subtle) 0%, transparent 100%);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-line);
   border-radius: 20px;
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 .glass-container:hover {
-  border-color: rgba(255, 255, 255, 0.09);
-  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
+  border-color: var(--glass-line-strong);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.25);
 }
 
 .glow-btn {
@@ -232,8 +232,8 @@ html, body, #root {
 }
 
 .premium-tab-track {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--g02);
+  border: 1px solid var(--g04);
   border-radius: 12px;
   padding: 4px;
   display: flex;
@@ -252,29 +252,63 @@ html, body, #root {
 }
 .premium-tab:hover {
   color: var(--t1);
-  background: rgba(255, 255, 255, 0.02);
+  background: var(--g02);
 }
 .premium-tab.active {
   background: var(--surface-3);
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--g07);
   color: var(--t1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .glass-input {
-  background: #0e0f13 !important;
-  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: var(--input-bg-solid) !important;
+  border: 1px solid var(--input-border) !important;
   color: var(--t1) !important;
   border-radius: 10px !important;
   transition: all 0.2s ease !important;
 }
 .glass-input option {
-  background: #0e0f13;
+  background: var(--input-bg-solid);
   color: var(--t1);
 }
 .glass-input:focus {
-  border-color: rgba(232, 232, 232, 0.25) !important;
-  box-shadow: 0 0 12px rgba(232, 232, 232, 0.08) !important;
-  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: var(--input-focus) !important;
+  box-shadow: none !important;
+  background: var(--input-bg-solid) !important;
 }
+
+/* ── Light theme overrides ── */
+[data-theme="light"] .glass-container {
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+}
+[data-theme="light"] .glass-container:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+}
+[data-theme="light"] .btn-ghost {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--t2);
+}
+[data-theme="light"] .btn-ghost:hover {
+  background: var(--surface-3);
+  color: var(--t1);
+}
+[data-theme="light"] .premium-tab-track {
+  background: rgba(0,0,0,0.03);
+  border-color: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .premium-tab:hover {
+  background: rgba(0,0,0,0.03);
+}
+[data-theme="light"] .premium-tab.active {
+  background: var(--surface-3);
+  border-color: rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+}
+[data-theme="light"] .nav-item:hover { background: var(--surface-3); }
+[data-theme="light"] .nav-item.active { background: var(--surface-2); border-color: var(--border); }
 

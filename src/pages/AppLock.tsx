@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LockIcon } from "../components/Icons";
 
@@ -81,8 +81,8 @@ export default function AppLock({ onUnlocked }: Props) {
         {[0, 1, 2, 3].map(i => (
           <div key={i} style={{
             width: 16, height: 16, borderRadius: "50%",
-            background: i < pin.length ? "rgba(167,139,250,0.9)" : "rgba(255,255,255,0.12)",
-            border: `2px solid ${i < pin.length ? "rgba(167,139,250,0.5)" : "rgba(255,255,255,0.1)"}`,
+            background: i < pin.length ? "rgba(167,139,250,0.9)" : "var(--g12)",
+            border: `2px solid ${i < pin.length ? "rgba(167,139,250,0.5)" : "var(--g10)"}`,
             transition: "background 0.12s, border-color 0.12s",
             boxShadow: i < pin.length ? "0 0 8px rgba(167,139,250,0.5)" : "none",
           }} />
@@ -118,12 +118,12 @@ export default function AppLock({ onUnlocked }: Props) {
             disabled={d === ""}
             style={{
               width: 70, height: 70, borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.07)",
+              border: "1px solid var(--g07)",
               background: d === "⌫"
                 ? "rgba(248,113,113,0.07)"
                 : d === ""
                   ? "transparent"
-                  : "rgba(255,255,255,0.03)",
+                  : "var(--g03)",
               color: d === "⌫" ? "var(--red)" : "var(--t1)",
               fontSize: d === "⌫" ? 18 : 22,
               fontWeight: 700,
@@ -131,8 +131,8 @@ export default function AppLock({ onUnlocked }: Props) {
               transition: "all 0.12s",
               opacity: d === "" ? 0 : 1,
             }}
-            onMouseEnter={e => { if (d) { e.currentTarget.style.background = d === "⌫" ? "rgba(248,113,113,0.15)" : "rgba(255,255,255,0.07)"; } }}
-            onMouseLeave={e => { if (d) { e.currentTarget.style.background = d === "⌫" ? "rgba(248,113,113,0.07)" : "rgba(255,255,255,0.03)"; } }}
+            onMouseEnter={e => { if (d) { e.currentTarget.style.background = d === "⌫" ? "rgba(248,113,113,0.15)" : "var(--g07)"; } }}
+            onMouseLeave={e => { if (d) { e.currentTarget.style.background = d === "⌫" ? "rgba(248,113,113,0.07)" : "var(--g03)"; } }}
           >
             {d}
           </button>

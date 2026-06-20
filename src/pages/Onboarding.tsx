@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 
 interface Props {
   onDone: () => void;
@@ -73,7 +73,7 @@ export default function Onboarding({ onDone }: Props) {
       {/* Ambient glow */}
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
-        background: "radial-gradient(ellipse 60% 40% at 50% 0%, rgba(232,232,232,0.04) 0%, transparent 70%)",
+        background: "radial-gradient(ellipse 60% 40% at 50% 0%, var(--g04) 0%, transparent 70%)",
       }} />
 
       {/* Step dots */}
@@ -81,7 +81,7 @@ export default function Onboarding({ onDone }: Props) {
         {STEPS.map((_, i) => (
           <div key={i} onClick={() => i < step && setStep(i)} style={{
             width: i === step ? 20 : 6, height: 6, borderRadius: 99,
-            background: i === step ? "#E8E8E8" : i < step ? "rgba(232,232,232,0.35)" : "rgba(255,255,255,0.1)",
+            background: i === step ? "var(--accent)" : i < step ? "var(--g35)" : "var(--g10)",
             transition: "all 0.3s ease", cursor: i < step ? "pointer" : "default",
           }} />
         ))}
@@ -92,7 +92,7 @@ export default function Onboarding({ onDone }: Props) {
         <button onClick={handleFinish} style={{
           position: "absolute", top: 22, right: 28,
           padding: "6px 14px", borderRadius: 8,
-          border: "1px solid rgba(255,255,255,0.06)",
+          border: "1px solid var(--g06)",
           background: "transparent", color: "var(--t3)",
           fontSize: 11.5, fontWeight: 600, cursor: "pointer",
           transition: "color 0.15s",
@@ -122,7 +122,7 @@ export default function Onboarding({ onDone }: Props) {
         {/* Badge */}
         <div style={{
           fontSize: 9.5, fontWeight: 900, letterSpacing: "0.14em",
-          color: "rgba(232,232,232,0.4)", marginBottom: 12,
+          color: "var(--g35)", marginBottom: 12,
         }}>
           {current.badge}
         </div>
@@ -164,8 +164,8 @@ export default function Onboarding({ onDone }: Props) {
               <div key={f.label} style={{
                 display: "flex", alignItems: "flex-start", gap: 12,
                 padding: "12px 14px", borderRadius: 12,
-                background: "rgba(255,255,255,0.02)",
-                border: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--g02)",
+                border: "1px solid var(--g05)",
               }}>
                 <div style={{
                   width: 30, height: 30, borderRadius: 8, flexShrink: 0,
@@ -189,16 +189,16 @@ export default function Onboarding({ onDone }: Props) {
           marginTop: 32,
           padding: "12px 40px", borderRadius: 12,
           border: "none",
-          background: isLast ? "rgba(232,232,232,0.95)" : "rgba(232,232,232,0.9)",
+          background: isLast ? "var(--accent)" : "var(--accent)",
           color: "#07080a",
           fontSize: 13.5, fontWeight: 800, letterSpacing: "-0.1px",
           cursor: "pointer",
-          boxShadow: "0 4px 20px rgba(232,232,232,0.15)",
+          boxShadow: "0 4px 20px var(--g15)",
           transition: "all 0.15s ease",
           display: "flex", alignItems: "center", gap: 8,
         }}
           onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 6px 24px rgba(232,232,232,0.22)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 20px rgba(232,232,232,0.15)"; }}>
+          onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 4px 20px var(--g15)"; }}>
           {isLast ? "Get Started" : "Continue"}
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             {isLast
@@ -234,9 +234,9 @@ function WelcomeVisual() {
       {/* Logo box */}
       <div style={{
         width: 96, height: 96, borderRadius: 22,
-        background: "linear-gradient(135deg, rgba(232,232,232,0.12) 0%, rgba(232,232,232,0.04) 100%)",
-        border: "1px solid rgba(232,232,232,0.2)",
-        boxShadow: "0 0 40px rgba(232,232,232,0.08), inset 0 1px 0 rgba(255,255,255,0.1)",
+        background: "linear-gradient(135deg, var(--g12) 0%, var(--g04) 100%)",
+        border: "1px solid var(--g20)",
+        boxShadow: "0 0 40px var(--g08), inset 0 1px 0 var(--g10)",
         display: "flex", alignItems: "center", justifyContent: "center",
         fontSize: 42, position: "relative",
       }}>
@@ -282,11 +282,11 @@ function AccountVisual() {
         <div key={i} style={{
           display: "flex", alignItems: "center", gap: 12,
           padding: "10px 14px", borderRadius: 12,
-          background: "rgba(255,255,255,0.02)",
-          border: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--g02)",
+          border: "1px solid var(--g06)",
           opacity: i === 0 ? 1 : 0.5 + i * 0.1,
         }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--g05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>
             {acc.avatar}
           </div>
           <div style={{ flex: 1 }}>
@@ -321,7 +321,7 @@ function ReadyVisual() {
         {["Home", "Accounts", "Hub", "Bootstrapper", "Settings"].map(page => (
           <div key={page} style={{
             padding: "5px 11px", borderRadius: 8,
-            background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
+            background: "var(--g02)", border: "1px solid var(--g06)",
             fontSize: 10, fontWeight: 700, color: "var(--t3)",
           }}>
             {page}

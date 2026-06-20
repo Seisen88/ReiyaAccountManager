@@ -1,8 +1,7 @@
-import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
-import { applyAccent, ACCENT_PRESETS } from "../context/ThemeContext";
 import {
   ChevronLeftIcon, CheckIcon, LoaderIcon,
   SlidersIcon, ZapIcon, ClockIcon, LayoutIcon,
@@ -196,7 +195,7 @@ export default function Settings() {
     CookieHealthIntervalMinutes: 60, AutoRejoinEnabled: false,
     AutoRejoinDelaySeconds: 30, AutoRejoinMaxAttempts: 3,
     SessionHistoryEnabled: true, SessionHistoryMaxRecords: 500,
-    Language: "en", ThemeName: "Default", AccentColor: "#E8E8E8", ColorMode: "Dark",
+    Language: "en", ThemeName: "Default", AccentColor: "var(--accent)", ColorMode: "Dark",
     ToastNotificationsEnabled: true, DisconnectAlertEnabled: true,
     LaunchSuccessAlert: false, SoundAlertsEnabled: false,
     AppLockEnabled: false, AppLockOnMinimize: false, AppLockPinHash: "",
@@ -242,7 +241,6 @@ export default function Settings() {
     settingsRef.current = next;
     setSettings(next);
     if (key === "Language") setLanguage(value);
-    if (key === "AccentColor") applyAccent(value);
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       try {
@@ -275,8 +273,8 @@ export default function Settings() {
       {/* Top navigation bar */}
       <div style={{
         padding: "0 24px",
-        borderBottom: "1px solid rgba(255,255,255,0.06)",
-        background: "rgba(8,9,12,0.7)",
+        borderBottom: "1px solid var(--glass-line-strong)",
+        background: "var(--panel-bg)",
         display: "flex", alignItems: "stretch", justifyContent: "space-between",
         flexShrink: 0, height: 48,
       }}>
@@ -326,7 +324,7 @@ export default function Settings() {
       {/* Page header for active tab */}
       <div style={{
         padding: "20px 28px 16px",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
+        borderBottom: "1px solid var(--glass-line-2)",
         flexShrink: 0,
         background: `linear-gradient(135deg, ${activeTabDef.accent}06 0%, transparent 60%)`,
       }}>
@@ -359,27 +357,21 @@ export default function Settings() {
       {/* Settings content — 2 col grid */}
       <div className="scroll" style={{ flex: 1, padding: "20px 28px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, maxWidth: 1100 }}>
-          {settings && activeTab === "app" && (
-            <ThemeSection
-              accentColor={settings.AccentColor ?? "#E8E8E8"}
-              onAccentChange={v => updateField("AccentColor", v)}
-            />
-          )}
           {settings && sections.map((section: any) => (
             <div key={section.id} style={{
-              background: "rgba(255,255,255,0.015)",
-              border: "1px solid rgba(255,255,255,0.06)",
+              background: "var(--g01)",
+              border: "1px solid var(--glass-line-strong)",
               borderRadius: 14,
               overflow: "hidden",
               transition: "border-color .2s",
             }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"}
-              onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}
+              onMouseEnter={e => e.currentTarget.style.borderColor = "var(--g10)"}
+              onMouseLeave={e => e.currentTarget.style.borderColor = "var(--g06)"}
             >
               {/* Section header */}
               <div style={{
                 padding: "12px 18px",
-                borderBottom: "1px solid rgba(255,255,255,0.05)",
+                borderBottom: "1px solid var(--glass-line)",
                 background: section.accent + "06",
                 display: "flex", alignItems: "center", gap: 9,
               }}>
@@ -406,8 +398,8 @@ export default function Settings() {
       {/* Footer save bar */}
       <div style={{
         padding: "11px 28px",
-        borderTop: "1px solid rgba(255,255,255,0.05)",
-        background: "rgba(8,9,12,0.8)",
+        borderTop: "1px solid var(--glass-line)",
+        background: "var(--panel-bg)",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         flexShrink: 0,
       }}>
@@ -419,12 +411,12 @@ export default function Settings() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => navigate("/")} disabled={saving} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
+          <button onClick={() => navigate("/")} disabled={saving} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid var(--glass-line-strong)", background: "transparent", color: "var(--t2)", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all .15s" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "var(--g03)"; }}
             onMouseLeave={e => { e.currentTarget.style.color = "var(--t2)"; e.currentTarget.style.background = "transparent"; }}>
             {t("cancel")}
           </button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: saving ? "rgba(232,232,232,0.08)" : "rgba(232,232,232,0.9)", color: saving ? "var(--t3)" : "#0a0a0a", fontSize: 12, fontWeight: 800, cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 2px 12px rgba(232,232,232,0.1)", transition: "all .15s", display: "flex", alignItems: "center", gap: 6 }}
+          <button onClick={handleSave} disabled={saving} style={{ padding: "7px 20px", borderRadius: 8, border: "none", background: saving ? "var(--g08)" : "var(--accent)", color: saving ? "var(--t3)" : "#0a0a0a", fontSize: 12, fontWeight: 800, cursor: saving ? "not-allowed" : "pointer", boxShadow: saving ? "none" : "0 2px 12px var(--g10)", transition: "all .15s", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => { if (!saving) e.currentTarget.style.filter = "brightness(1.06)"; }}
             onMouseLeave={e => { if (!saving) e.currentTarget.style.filter = "none"; }}>
             {saving
@@ -442,7 +434,7 @@ function SettingRow({ label, desc, children }: { label: string; desc?: string; c
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
-      padding: "11px 0", borderBottom: "1px solid rgba(255,255,255,0.04)", gap: 12,
+      padding: "11px 0", borderBottom: "1px solid var(--glass-line-2)", gap: 12,
     }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: "var(--t1)", lineHeight: 1.3 }}>{label}</div>
@@ -458,8 +450,8 @@ function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boole
     <div
       style={{
         width: 38, height: 20, borderRadius: 99,
-        background: value ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.04)",
-        border: value ? "1px solid rgba(255,255,255,0.35)" : "1px solid rgba(255,255,255,0.1)",
+        background: value ? "var(--accent)" : "var(--glass-line-2)",
+        border: value ? `1px solid var(--accent)` : "1px solid var(--glass-line-strong)",
         position: "relative", cursor: "pointer", transition: "all 0.2s ease", flexShrink: 0,
       }}
       onClick={() => onChange(!value)}
@@ -467,8 +459,7 @@ function ToggleSwitch({ value, onChange }: { value: boolean; onChange: (v: boole
       <div style={{
         position: "absolute", top: 2, left: value ? 20 : 2,
         width: 14, height: 14, borderRadius: "50%",
-        background: value ? "#F0F1F6" : "#4B4E64",
-        boxShadow: value ? "0 0 6px rgba(240,241,246,0.4)" : "none",
+        background: value ? "var(--accent-text)" : "var(--t3)",
         transition: "all 0.2s cubic-bezier(0.25,0.8,0.25,1)",
       }} />
     </div>
@@ -523,104 +514,6 @@ const LANGUAGES = [
   { value: "tl",    label: "Filipino" },
 ];
 
-function ThemeSection({ accentColor, onAccentChange }: { accentColor: string; onAccentChange: (v: string) => void }) {
-  const [hexInput, setHexInput] = useState(accentColor);
-  useEffect(() => { setHexInput(accentColor); }, [accentColor]);
-
-  const commitHex = (v: string) => {
-    if (/^#[0-9A-Fa-f]{6}$/.test(v)) onAccentChange(v);
-  };
-
-  return (
-    <div style={{
-      background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.06)",
-      borderRadius: 14, overflow: "hidden",
-      transition: "border-color .2s",
-    }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"}
-      onMouseLeave={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"}
-    >
-      <div style={{
-        padding: "12px 18px", borderBottom: "1px solid rgba(255,255,255,0.05)",
-        background: "rgba(167,139,250,0.04)", display: "flex", alignItems: "center", gap: 9,
-      }}>
-        <div style={{
-          width: 26, height: 26, borderRadius: 7,
-          background: "rgba(167,139,250,0.18)", border: "1px solid rgba(167,139,250,0.3)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="4" />
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-          </svg>
-        </div>
-        <span style={{ fontSize: 11, fontWeight: 800, color: "var(--t1)", letterSpacing: "0.04em" }}>ACCENT COLOR</span>
-      </div>
-
-      <div style={{ padding: "14px 18px" }}>
-        <div style={{ fontSize: 10, color: "var(--t3)", fontWeight: 700, letterSpacing: "0.08em", marginBottom: 10 }}>PRESETS</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {ACCENT_PRESETS.map(p => {
-            const active = accentColor.toLowerCase() === p.value.toLowerCase();
-            return (
-              <button
-                key={p.value}
-                title={p.name}
-                onClick={() => onAccentChange(p.value)}
-                style={{
-                  width: 28, height: 28, borderRadius: 8, border: "none",
-                  background: p.value, cursor: "pointer", position: "relative",
-                  boxShadow: active ? `0 0 0 2px #07080a, 0 0 0 4px ${p.value}` : "none",
-                  transition: "transform .12s, box-shadow .12s",
-                  transform: active ? "scale(1.15)" : "scale(1)",
-                }}
-              >
-                {active && (
-                  <svg style={{ position: "absolute", inset: 0, margin: "auto" }} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={(() => { const r=parseInt(p.value.slice(1,3),16),g=parseInt(p.value.slice(3,5),16),b=parseInt(p.value.slice(5,7),16); return (0.299*r+0.587*g+0.114*b)/255 > 0.55 ? "#0a0a0a" : "#fff"; })()} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ fontSize: 10, color: "var(--t3)", fontWeight: 700, letterSpacing: "0.08em", marginBottom: 8 }}>CUSTOM HEX</div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: hexInput, border: "1px solid rgba(255,255,255,0.1)", flexShrink: 0 }} />
-          <input
-            value={hexInput}
-            onChange={e => setHexInput(e.target.value)}
-            onBlur={e => commitHex(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") commitHex(hexInput); }}
-            placeholder="#E8E8E8"
-            maxLength={7}
-            style={{
-              flex: 1, height: 32, padding: "0 10px", borderRadius: 8, outline: "none",
-              background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-              color: "var(--t1)", fontSize: 12, fontFamily: "monospace",
-              transition: "border-color .15s",
-            }}
-            onFocus={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.3)"}
-          />
-          <button
-            onClick={() => commitHex(hexInput)}
-            style={{
-              height: 32, padding: "0 12px", borderRadius: 8, fontSize: 11, fontWeight: 700,
-              border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.04)",
-              color: "var(--t2)", cursor: "pointer", transition: "all .12s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
-          >
-            Apply
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function SelectInput({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
     <select
@@ -628,13 +521,13 @@ function SelectInput({ value, onChange, options }: { value: string; onChange: (v
       onChange={e => onChange(e.target.value)}
       style={{
         width: 160, padding: "6px 10px", fontSize: 11.5, outline: "none",
-        background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+        background: "var(--input-bg-solid)", border: "1px solid var(--input-border)",
         borderRadius: 8, color: "var(--t1)", cursor: "pointer",
-        appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.3)'/%3E%3C/svg%3E")`,
+        appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(128,128,128,0.5)'/%3E%3C/svg%3E")`,
         backgroundRepeat: "no-repeat", backgroundPosition: "right 10px center",
       }}
     >
-      {options.map(o => <option key={o.value} value={o.value} style={{ background: "#0e0f13" }}>{o.label}</option>)}
+      {options.map(o => <option key={o.value} value={o.value} style={{ background: "var(--input-bg-solid)" }}>{o.label}</option>)}
     </select>
   );
 }

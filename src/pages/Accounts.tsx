@@ -1,4 +1,4 @@
-import { useLanguage } from "../context/LanguageContext";
+﻿import { useLanguage } from "../context/LanguageContext";
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -404,13 +404,13 @@ export default function Accounts() {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)" }}>
 
       {/* â"€â"€ HEADER â"€â"€ */}
       <div style={{
         padding: "18px 24px",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        background: "rgba(255,255,255,0.01)",
+        borderBottom: "1px solid var(--g04)",
+        background: "var(--g01)",
         backdropFilter: "blur(12px)",
         flexShrink: 0,
       }}>
@@ -441,11 +441,11 @@ export default function Accounts() {
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "8px 14px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
-                border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--g08)", background: "var(--g04)",
                 color: "var(--t2)", cursor: "pointer", transition: "all .12s",
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
+              onMouseEnter={e => { e.currentTarget.style.background = "var(--g08)"; e.currentTarget.style.color = "var(--t1)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "var(--g04)"; e.currentTarget.style.color = "var(--t2)"; }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
@@ -458,11 +458,11 @@ export default function Accounts() {
               style={{
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "8px 14px", borderRadius: 10, fontSize: 11.5, fontWeight: 700,
-                border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)",
+                border: "1px solid var(--g08)", background: "var(--g04)",
                 color: "var(--t2)", cursor: "pointer", transition: "all .12s",
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = "var(--t1)"; }}
-              onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = "var(--t2)"; }}
+              onMouseEnter={e => { e.currentTarget.style.background = "var(--g08)"; e.currentTarget.style.color = "var(--t1)"; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "var(--g04)"; e.currentTarget.style.color = "var(--t2)"; }}
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
@@ -479,7 +479,7 @@ export default function Accounts() {
                   padding: "9px 16px", borderRadius: 10, border: "none",
                   background: "var(--accent)",
                   color: "var(--accent-text)", fontSize: 12, fontWeight: 800, cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(232,232,232,0.18)", transition: "filter .12s",
+                  boxShadow: "0 4px 14px var(--g18)", transition: "filter .12s",
                 }}
                 onMouseEnter={e => e.currentTarget.style.filter = "brightness(1.1)"}
                 onMouseLeave={e => e.currentTarget.style.filter = "none"}
@@ -493,17 +493,17 @@ export default function Accounts() {
                   onClick={e => e.stopPropagation()}
                   style={{
                     position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 999,
-                    background: "linear-gradient(135deg, rgba(19,20,27,0.99) 0%, rgba(13,14,20,0.99) 100%)",
-                    border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14,
+                    background: "var(--modal-bg)",
+                    border: "1px solid var(--g08)", borderRadius: 14,
                     padding: 6, minWidth: 220,
-                    boxShadow: "0 16px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)",
+                    boxShadow: "0 16px 40px rgba(0,0,0,0.7), 0 0 0 1px var(--g04)",
                   }}
                 >
                   <DropdownItem icon={<GlobeIcon size={14} />} label={t("manual_login_title")} sub={t("manual_login_sub")} onClick={handleManualLogin} />
                   <DropdownItem icon={<KeyIcon size={14} />} label={t("user_pass_title")} sub={t("user_pass_sub")} onClick={() => { setAddMenu(false); setComboText(""); setLoginError(""); setShowUserPass(true); }} />
                   <DropdownItem icon={<ShieldCheckIcon size={14} />} label={t("cookie_title")} sub={t("cookie_sub")} onClick={handleOpenCookieMenu} />
                   <DropdownItem icon={<FileTextIcon size={14} />} label={t("cookies_file_title")} sub={t("cookies_file_sub")} onClick={() => { setAddMenu(false); setBulkText(""); setBulkResults([]); setShowBulk(true); }} />
-                  <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "4px 8px" }} />
+                  <div style={{ height: 1, background: "var(--g06)", margin: "4px 8px" }} />
                   <DropdownItem icon={<SettingsIcon size={14} />} label={t("custom_login_title")} sub={t("custom_login_sub")} onClick={() => setAddMenu(false)} />
                 </div>
               )}
@@ -523,12 +523,12 @@ export default function Accounts() {
               onChange={e => setSearch(e.target.value)}
               style={{
                 width: "100%", paddingLeft: 36, padding: "9px 12px 9px 36px",
-                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--g02)", border: "1px solid var(--g05)",
                 borderRadius: 10, color: "var(--t1)", fontSize: 12, outline: "none",
                 transition: "border-color .15s",
               }}
-              onFocus={e => e.currentTarget.style.borderColor = "rgba(232,232,232,0.4)"}
-              onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)"}
+              onFocus={e => e.currentTarget.style.borderColor = "var(--g35)"}
+              onBlur={e => e.currentTarget.style.borderColor = "var(--g05)"}
             />
           </div>
 
@@ -587,7 +587,7 @@ export default function Accounts() {
           flex: 1, overflowY: "auto", padding: "16px 20px",
           display: "grid", gridTemplateColumns: "1fr",
           gap: 10, alignContent: "start",
-          background: "radial-gradient(circle at top right, rgba(232,232,232,0.02) 0%, transparent 60%)",
+          background: "radial-gradient(circle at top right, var(--g02) 0%, transparent 60%)",
         }}
       >
         {loading ? (
@@ -598,7 +598,7 @@ export default function Accounts() {
           <div style={{
             textAlign: "center", padding: "60px 20px",
             color: "var(--t3)", fontSize: 12.5,
-            border: "1px dashed rgba(255,255,255,0.06)", borderRadius: 16,
+            border: "1px dashed var(--g06)", borderRadius: 16,
           }}>
             {accounts.length === 0
               ? '{t("no_accounts_yet")}'
@@ -641,7 +641,7 @@ export default function Accounts() {
             style={{
               width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 10.5,
               padding: "10px 13px", borderRadius: 10, outline: "none",
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: "var(--g03)", border: "1px solid var(--g07)",
               color: "var(--t1)", marginBottom: 12,
             }}
           />
@@ -668,7 +668,7 @@ export default function Accounts() {
               style={{
                 width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 10,
                 padding: "10px 13px", borderRadius: 10, outline: "none",
-                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+                background: "var(--g03)", border: "1px solid var(--g07)",
                 color: "var(--t1)", marginBottom: 12,
               }}
             />
@@ -712,7 +712,7 @@ export default function Accounts() {
             style={{
               width: "100%", resize: "vertical", fontFamily: "monospace", fontSize: 11,
               padding: "10px 13px", borderRadius: 10, outline: "none",
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: "var(--g03)", border: "1px solid var(--g07)",
               color: "var(--t1)", marginBottom: 12, opacity: loginLoading ? 0.5 : 1,
             }}
           />
@@ -733,7 +733,7 @@ export default function Accounts() {
         >
           <div style={{
             display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
-            background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+            background: "var(--g02)", border: "1px solid var(--g05)",
             borderRadius: 12, marginBottom: 20,
           }}>
             <Avatar name={selectedUtilAccount.username} avatarUrl={selectedUtilAccount.avatar_url} size={40} />
@@ -812,7 +812,7 @@ export default function Accounts() {
             disabled={exportLoading}
             style={{
               width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: "var(--g03)", border: "1px solid var(--g07)",
               color: "var(--t1)", fontSize: 12, marginBottom: 12, opacity: exportLoading ? 0.5 : 1,
             }}
           />
@@ -847,7 +847,7 @@ export default function Accounts() {
             disabled={importLoading}
             style={{
               width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: "var(--g03)", border: "1px solid var(--g07)",
               color: "var(--t1)", fontSize: 12, marginBottom: 12, opacity: importLoading ? 0.5 : 1,
             }}
           />
@@ -879,7 +879,7 @@ export default function Accounts() {
             placeholder="e.g. Main, Alts, Farming..."
             style={{
               width: "100%", height: 38, padding: "0 13px", borderRadius: 10, outline: "none",
-              background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+              background: "var(--g03)", border: "1px solid var(--g07)",
               color: "var(--t1)", fontSize: 12, marginBottom: 12,
             }}
           />
@@ -904,8 +904,8 @@ function BulkBtn({ label, onClick, disabled, danger, accent }: {
       style={{
         padding: "5px 12px", borderRadius: 7, fontSize: 11, fontWeight: 700,
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
-        border: `1px solid ${danger ? "rgba(248,113,113,0.3)" : accent ? `${accent}40` : "rgba(255,255,255,0.1)"}`,
-        background: danger ? "rgba(248,113,113,0.08)" : accent ? `${accent}14` : "rgba(255,255,255,0.04)",
+        border: `1px solid ${danger ? "rgba(248,113,113,0.3)" : accent ? `${accent}40` : "var(--g10)"}`,
+        background: danger ? "rgba(248,113,113,0.08)" : accent ? `${accent}14` : "var(--g04)",
         color: danger ? "var(--red)" : accent ?? "var(--t2)",
         transition: "all .12s",
       }}
@@ -944,8 +944,8 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
         padding: "14px 18px",
         background: isSelected
           ? "rgba(167,139,250,0.06)"
-          : hovered ? "rgba(255,255,255,0.025)" : "rgba(255,255,255,0.015)",
-        border: `1px solid ${isSelected ? "rgba(167,139,250,0.25)" : hovered ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.04)"}`,
+          : hovered ? "var(--g01)" : "var(--g01)",
+        border: `1px solid ${isSelected ? "rgba(167,139,250,0.25)" : hovered ? "var(--g07)" : "var(--g04)"}`,
         borderRadius: 16, transition: "all .15s", cursor: "default",
       }}
     >
@@ -954,7 +954,7 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
         onClick={onToggleSelect}
         style={{
           width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-          border: `2px solid ${isSelected ? "#A78BFA" : "rgba(255,255,255,0.12)"}`,
+          border: `2px solid ${isSelected ? "#A78BFA" : "var(--g12)"}`,
           background: isSelected ? "#A78BFA" : "transparent",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", transition: "all .12s",
@@ -1029,7 +1029,7 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
           onClick={onValidate}
           style={{
             marginTop: 5, fontSize: 9, padding: "2px 9px", borderRadius: 5,
-            border: "1px solid rgba(255,255,255,0.06)", background: "transparent",
+            border: "1px solid var(--g06)", background: "transparent",
             color: "var(--t3)", cursor: "pointer", fontWeight: 600,
             opacity: hovered ? 1 : 0, transition: "opacity .12s",
           }}
@@ -1049,7 +1049,7 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
             opacity: hovered ? 1 : 0.4, transition: "all .12s",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
-          onMouseEnter={e => { e.currentTarget.style.color = "var(--amber)"; e.currentTarget.style.background = "rgba(232,232,232,0.08)"; }}
+          onMouseEnter={e => { e.currentTarget.style.color = "var(--amber)"; e.currentTarget.style.background = "var(--g08)"; }}
           onMouseLeave={e => { e.currentTarget.style.color = "var(--t3)"; e.currentTarget.style.background = "none"; }}
         >
           <SettingsIcon size={14} />
@@ -1064,7 +1064,7 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
             opacity: hovered || account.is_favorite ? 1 : 0.4,
             display: "flex", alignItems: "center", justifyContent: "center",
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = "rgba(232,232,232,0.08)"; }}
+          onMouseEnter={e => { e.currentTarget.style.background = "var(--g08)"; }}
           onMouseLeave={e => { e.currentTarget.style.background = "none"; }}
         >
           <StarIcon size={13} fill={account.is_favorite ? "var(--amber)" : "none"} color={account.is_favorite ? "var(--amber)" : "var(--t3)"} />
@@ -1093,15 +1093,15 @@ function AccountCard({ account, isLaunching, isSelected, onToggleSelect, onToggl
           display: "flex", alignItems: "center", gap: 7,
           padding: "9px 18px", borderRadius: 10, border: "none",
           background: isLaunching
-            ? "rgba(255,255,255,0.04)"
+            ? "var(--g04)"
             : isValid
               ? "var(--accent)"
-              : "rgba(255,255,255,0.04)",
+              : "var(--g04)",
           color: isLaunching ? "var(--t3)" : isValid ? "var(--accent-text)" : "var(--t3)",
           fontSize: 12, fontWeight: 800,
           cursor: isLaunching || !isValid ? "not-allowed" : "pointer",
           flexShrink: 0,
-          boxShadow: isValid && !isLaunching ? "0 4px 14px rgba(232,232,232,0.2)" : "none",
+          boxShadow: isValid && !isLaunching ? "0 4px 14px var(--g20)" : "none",
           transition: "all .12s",
           filter: hovered && isValid && !isLaunching ? "brightness(1.08)" : "none",
         }}
@@ -1118,7 +1118,7 @@ function AccountStatPill({ value, label, color }: { value: number; label: string
   return (
     <div style={{
       textAlign: "center", padding: "6px 16px", borderRadius: 10,
-      background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+      background: "var(--g02)", border: "1px solid var(--g05)",
     }}>
       <div style={{ fontSize: 16, fontWeight: 900, color, lineHeight: 1 }}>{value}</div>
       <div style={{ fontSize: 8.5, color: "var(--t3)", marginTop: 3, fontWeight: 800, letterSpacing: "0.08em" }}>{label}</div>
@@ -1134,8 +1134,8 @@ function AccountModal({ title, children, onClose, wide }: { title: string; child
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: "linear-gradient(135deg, rgba(19,20,27,0.99) 0%, rgba(13,14,20,0.99) 100%)",
-        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 20,
+        background: "var(--modal-bg)",
+        border: "1px solid var(--g08)", borderRadius: 20,
         padding: 26, width: wide ? 500 : 440, maxWidth: "93vw", maxHeight: "88vh", overflowY: "auto",
         boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
       }}>
@@ -1148,7 +1148,7 @@ function AccountModal({ title, children, onClose, wide }: { title: string; child
               color: "var(--t3)", display: "flex", alignItems: "center", justifyContent: "center",
               padding: 4, borderRadius: 6, transition: "all .12s",
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "var(--g06)"; }}
             onMouseLeave={e => { e.currentTarget.style.color = "var(--t3)"; e.currentTarget.style.background = "none"; }}
           >
             <XIcon size={16} />
@@ -1170,10 +1170,10 @@ function ModalBtn({ label, onClick, primary, danger, disabled }: {
       style={{
         flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 12, fontWeight: 800,
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1, transition: "all .12s",
-        border: primary ? "none" : danger ? "1px solid rgba(248,113,113,0.3)" : "1px solid rgba(255,255,255,0.07)",
-        background: primary ? "rgba(232,232,232,0.92)" : danger ? "rgba(248,113,113,0.1)" : "rgba(255,255,255,0.03)",
+        border: primary ? "none" : danger ? "1px solid rgba(248,113,113,0.3)" : "1px solid var(--g07)",
+        background: primary ? "var(--accent)" : danger ? "rgba(248,113,113,0.1)" : "var(--g03)",
         color: primary ? "#0a0a0a" : danger ? "var(--red)" : "var(--t2)",
-        boxShadow: primary && !disabled ? "0 4px 14px rgba(232,232,232,0.2)" : "none",
+        boxShadow: primary && !disabled ? "0 4px 14px var(--g20)" : "none",
       }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.filter = "brightness(1.1)"; }}
       onMouseLeave={e => { if (!disabled) e.currentTarget.style.filter = "none"; }}
@@ -1210,7 +1210,7 @@ function UtilSection({ label, Icon, children }: { label: string; Icon: React.Com
   return (
     <div style={{
       padding: "14px 16px", borderRadius: 12,
-      background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.05)",
+      background: "var(--g01)", border: "1px solid var(--g05)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
         <Icon size={12} color="var(--t3)" />
@@ -1231,11 +1231,11 @@ function UtilInput({ value, onChange, placeholder, type, disabled }: { value: st
       disabled={disabled}
       style={{
         flex: 1, height: 34, padding: "0 12px", borderRadius: 9, outline: "none", fontSize: 12,
-        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
+        background: "var(--g03)", border: "1px solid var(--g07)",
         color: "var(--t1)", opacity: disabled ? 0.5 : 1, transition: "border-color .15s",
       }}
-      onFocus={e => e.currentTarget.style.borderColor = "rgba(232,232,232,0.4)"}
-      onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"}
+      onFocus={e => e.currentTarget.style.borderColor = "var(--g35)"}
+      onBlur={e => e.currentTarget.style.borderColor = "var(--g07)"}
     />
   );
 }
@@ -1249,9 +1249,9 @@ function UtilAction({ label, onClick, disabled, danger, fullWidth }: { label: st
         flex: fullWidth ? "1 1 100%" : undefined,
         height: 34, padding: "0 16px", borderRadius: 9, fontSize: 11.5, fontWeight: 800,
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.4 : 1, transition: "all .12s",
-        background: danger ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.04)",
+        background: danger ? "rgba(248,113,113,0.08)" : "var(--g04)",
         color: danger ? "var(--red)" : "var(--t1)",
-        border: danger ? "1px solid rgba(248,113,113,0.2)" : "1px solid rgba(255,255,255,0.07)",
+        border: danger ? "1px solid rgba(248,113,113,0.2)" : "1px solid var(--g07)",
       }}
       onMouseEnter={e => { if (!disabled) e.currentTarget.style.filter = "brightness(1.15)"; }}
       onMouseLeave={e => { if (!disabled) e.currentTarget.style.filter = "none"; }}
@@ -1271,16 +1271,16 @@ function DropdownItem({ icon, label, sub, onClick }: { icon: ReactNode; label: s
       onClick={onClick}
       style={{
         display: "flex", alignItems: "center", gap: 10, padding: "10px 12px",
-        borderRadius: 9, background: hov ? "rgba(255,255,255,0.05)" : "transparent",
+        borderRadius: 9, background: hov ? "var(--g05)" : "transparent",
         cursor: "pointer", transition: "background .1s",
       }}
     >
       <span style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         width: 28, height: 28, borderRadius: 7, flexShrink: 0,
-        background: hov ? "rgba(232,232,232,0.1)" : "rgba(255,255,255,0.04)",
+        background: hov ? "var(--g10)" : "var(--g04)",
         color: hov ? "var(--amber)" : "var(--t2)",
-        border: `1px solid ${hov ? "rgba(232,232,232,0.2)" : "rgba(255,255,255,0.06)"}`,
+        border: `1px solid ${hov ? "var(--g20)" : "var(--g06)"}`,
         transition: "all .12s",
       }}>
         {icon}
@@ -1333,7 +1333,7 @@ function LazyAvatar({ name, avatarUrl, size }: { name: string; avatarUrl: string
     <div ref={ref} style={{ width: size, height: size }}>
       {visible
         ? <Avatar name={name} avatarUrl={avatarUrl} size={size} />
-        : <div style={{ width: size, height: size, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+        : <div style={{ width: size, height: size, borderRadius: "50%", background: "var(--g05)" }} />
       }
     </div>
   );

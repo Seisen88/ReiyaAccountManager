@@ -295,13 +295,13 @@ export default function Utilities() {
   }, [selectedItem, t]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#07080a", overflow: "hidden" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg)", overflow: "hidden" }}>
 
       {/* â”€â”€ HEADER â”€â”€ */}
       <div style={{
         padding: "18px 24px",
-        borderBottom: "1px solid rgba(255,255,255,0.04)",
-        background: "rgba(255,255,255,0.01)",
+        borderBottom: "1px solid var(--g04)",
+        background: "var(--g01)",
         backdropFilter: "blur(12px)",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         flexShrink: 0,
@@ -320,7 +320,7 @@ export default function Utilities() {
           <div style={{
             display: "flex", alignItems: "center", gap: 6,
             padding: "5px 12px", borderRadius: 10,
-            background: "rgba(255,255,255,0.02)",
+            background: "var(--g02)",
             border: `1px solid ${multiInstanceActive ? "rgba(52,211,153,0.2)" : "rgba(248,113,113,0.2)"}`,
           }}>
             <span style={{
@@ -351,13 +351,13 @@ export default function Utilities() {
           <button
             onClick={() => navigate("/settings")}
             style={{
-              background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+              background: "var(--g02)", border: "1px solid var(--g05)",
               borderRadius: 9, cursor: "pointer", color: "var(--t3)",
               display: "flex", alignItems: "center", justifyContent: "center",
               width: 32, height: 32, transition: "all .15s",
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "rgba(255,255,255,0.05)"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "var(--t3)"; e.currentTarget.style.background = "rgba(255,255,255,0.02)"; }}
+            onMouseEnter={e => { e.currentTarget.style.color = "var(--t1)"; e.currentTarget.style.background = "var(--g05)"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "var(--t3)"; e.currentTarget.style.background = "var(--g02)"; }}
           >
             <SettingsIcon size={14} />
           </button>
@@ -369,7 +369,7 @@ export default function Utilities() {
         flex: 1, padding: "18px 22px",
         display: "flex", flexDirection: "column", gap: 14,
         overflow: "hidden", minHeight: 0,
-        background: "radial-gradient(circle at top right, rgba(232,232,232,0.02) 0%, transparent 60%)",
+        background: "radial-gradient(circle at top right, var(--g02) 0%, transparent 60%)",
       }}>
 
         {/* â”€â”€ Tab Bar â”€â”€ */}
@@ -399,7 +399,7 @@ export default function Utilities() {
               {/* Search */}
               <div style={{
                 display: "flex", gap: 8, alignItems: "center",
-                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--g02)", border: "1px solid var(--g05)",
                 borderRadius: 12, padding: "5px 8px 5px 14px",
               }}>
                 <SearchIcon size={13} color="var(--t3)" />
@@ -416,7 +416,7 @@ export default function Utilities() {
                   disabled={loadingServers}
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
-                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
+                    background: "var(--g04)", border: "1px solid var(--g07)",
                     borderRadius: 8, color: "var(--t1)", fontSize: 11, fontWeight: 700,
                     padding: "6px 14px", cursor: "pointer", transition: "all .15s",
                   }}
@@ -453,8 +453,8 @@ export default function Utilities() {
               {/* Server table */}
               <div className="scroll" style={{
                 flex: 1, overflowY: "auto",
-                background: "rgba(255,255,255,0.01)",
-                border: "1px solid rgba(255,255,255,0.05)", borderRadius: 14,
+                background: "var(--g01)",
+                border: "1px solid var(--g05)", borderRadius: 14,
               }}>
                 {loadingServers ? (
                   <div style={{ padding: 50, textAlign: "center", color: "var(--t2)", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
@@ -470,7 +470,7 @@ export default function Utilities() {
                 ) : (
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
                     <thead>
-                      <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.05)", textAlign: "left" }}>
+                      <tr style={{ borderBottom: "1px solid var(--g05)", textAlign: "left" }}>
                         {[t("job_id_guid_header"), t("players_header"), t("ping_header"), t("fps_header")].map((h, i) => (
                           <th key={h} style={{
                             padding: "10px 16px", color: "var(--t3)", fontWeight: 800, fontSize: 9.5,
@@ -490,11 +490,11 @@ export default function Utilities() {
                             key={srv.job_id}
                             onClick={() => setSelectedItem({ type: "server", placeId: String(resolvedServerGame?.place_id || ""), jobId: srv.job_id, name: resolvedServerGame?.name })}
                             style={{
-                              borderBottom: "1px solid rgba(255,255,255,0.03)",
-                              background: isSelected ? "rgba(232,232,232,0.05)" : "transparent",
+                              borderBottom: "1px solid var(--g03)",
+                              background: isSelected ? "var(--g05)" : "transparent",
                               cursor: "pointer", transition: "background .08s",
                             }}
-                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "rgba(255,255,255,0.015)"; }}
+                            onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = "var(--g01)"; }}
                             onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                           >
                             <td style={{ padding: "11px 16px", fontFamily: "monospace", fontSize: 10.5, color: isSelected ? "var(--amber)" : "var(--t2)", fontWeight: isSelected ? 700 : 400 }}>
@@ -525,7 +525,7 @@ export default function Utilities() {
               {/* Search */}
               <div style={{
                 display: "flex", gap: 8, alignItems: "center",
-                background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+                background: "var(--g02)", border: "1px solid var(--g05)",
                 borderRadius: 12, padding: "5px 8px 5px 14px",
               }}>
                 <SearchIcon size={13} color="var(--t3)" />
@@ -542,7 +542,7 @@ export default function Utilities() {
                   disabled={loadingGames}
                   style={{
                     display: "flex", alignItems: "center", gap: 6,
-                    background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)",
+                    background: "var(--g04)", border: "1px solid var(--g07)",
                     borderRadius: 8, color: "var(--t1)", fontSize: 11, fontWeight: 700,
                     padding: "6px 14px", cursor: "pointer",
                   }}
@@ -700,8 +700,8 @@ export default function Utilities() {
       {/* â”€â”€ FOOTER â”€â”€ */}
       <div style={{
         padding: "12px 22px",
-        borderTop: "1px solid rgba(255,255,255,0.04)",
-        background: "rgba(255,255,255,0.005)",
+        borderTop: "1px solid var(--g04)",
+        background: "var(--g01)",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         flexShrink: 0,
       }}>
@@ -724,8 +724,8 @@ export default function Utilities() {
             onClick={() => navigate("/")}
             style={{
               padding: "9px 20px", borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.06)",
-              background: "rgba(255,255,255,0.02)", color: "var(--t2)",
+              border: "1px solid var(--g06)",
+              background: "var(--g02)", color: "var(--t2)",
               fontSize: 11.5, fontWeight: 700, cursor: "pointer", transition: "all .15s",
             }}
             onMouseEnter={e => e.currentTarget.style.color = "var(--t1)"}
@@ -740,13 +740,13 @@ export default function Utilities() {
               display: "flex", alignItems: "center", gap: 7,
               padding: "9px 20px", borderRadius: 10, border: "none",
               background: selectedItem
-                ? "rgba(232,232,232,0.92)"
-                : "rgba(255,255,255,0.04)",
+                ? "var(--accent)"
+                : "var(--g04)",
               color: selectedItem ? "#0a0a0a" : "var(--t3)",
               fontSize: 11.5, fontWeight: 800,
               cursor: selectedItem ? "pointer" : "not-allowed",
               opacity: selectedItem ? 1 : 0.5,
-              boxShadow: selectedItem ? "0 4px 14px rgba(232,232,232,0.25)" : "none",
+              boxShadow: selectedItem ? "0 4px 14px var(--g25)" : "none",
               transition: "all .12s",
             }}
             onMouseEnter={e => { if (selectedItem) e.currentTarget.style.filter = "brightness(1.08)"; }}
@@ -820,13 +820,13 @@ function GameCard({
       onContextMenu={onContextMenu}
       style={{
         display: "flex", gap: 12, padding: "12px 14px",
-        background: isSelected ? "rgba(232,232,232,0.04)" : "rgba(255,255,255,0.02)",
-        border: `1px solid ${isSelected ? "rgba(232,232,232,0.4)" : "rgba(255,255,255,0.05)"}`,
+        background: isSelected ? "var(--g04)" : "var(--g02)",
+        border: `1px solid ${isSelected ? "var(--g35)" : "var(--g05)"}`,
         borderRadius: 14, alignItems: "center", cursor: "pointer",
-        transition: "all .12s", boxShadow: isSelected ? "0 0 14px rgba(232,232,232,0.06)" : "none",
+        transition: "all .12s", boxShadow: isSelected ? "0 0 14px var(--g06)" : "none",
       }}
-      onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; } }}
-      onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = "rgba(255,255,255,0.05)"; e.currentTarget.style.background = "rgba(255,255,255,0.02)"; } }}
+      onMouseEnter={e => { if (!isSelected) { e.currentTarget.style.borderColor = "var(--g08)"; e.currentTarget.style.background = "var(--g03)"; } }}
+      onMouseLeave={e => { if (!isSelected) { e.currentTarget.style.borderColor = "var(--g05)"; e.currentTarget.style.background = "var(--g02)"; } }}
     >
       {/* Thumbnail */}
       {thumb ? (
@@ -834,7 +834,7 @@ function GameCard({
       ) : (
         <div style={{
           width: 46, height: 46, borderRadius: 10, flexShrink: 0,
-          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)",
+          background: "var(--g03)", border: "1px solid var(--g06)",
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
           <GamepadIcon size={18} color="var(--t3)" />
@@ -896,7 +896,7 @@ function IconBtn({ children, title, onClick, hoverColor }: {
         display: "flex", alignItems: "center", justifyContent: "center",
         transition: "all .12s",
       }}
-      onMouseEnter={e => { e.currentTarget.style.color = hoverColor ?? "var(--t1)"; e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+      onMouseEnter={e => { e.currentTarget.style.color = hoverColor ?? "var(--t1)"; e.currentTarget.style.background = "var(--g04)"; }}
       onMouseLeave={e => { e.currentTarget.style.color = "var(--t3)"; e.currentTarget.style.background = "none"; }}
     >
       {children}
@@ -911,7 +911,7 @@ function SectionLabel({ label, count }: { label: string; count: number }) {
       <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--t3)", letterSpacing: "0.12em" }}>{label}</span>
       <span style={{
         fontSize: 9, fontWeight: 800, color: "var(--amber)",
-        background: "rgba(232,232,232,0.08)", border: "1px solid rgba(232,232,232,0.15)",
+        background: "var(--g08)", border: "1px solid var(--g15)",
         padding: "1px 7px", borderRadius: 99,
       }}>{count}</span>
     </div>
@@ -926,8 +926,8 @@ function Modal({ children, onClose }: { children: React.ReactNode; onClose: () =
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div style={{
-        background: "linear-gradient(135deg, rgba(19,20,27,0.98) 0%, rgba(13,14,20,0.99) 100%)",
-        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 18,
+        background: "var(--modal-bg)",
+        border: "1px solid var(--g08)", borderRadius: 18,
         padding: 26, width: 440, maxWidth: "92vw",
         boxShadow: "0 24px 60px rgba(0,0,0,0.7)",
       }}>
@@ -944,12 +944,12 @@ function ModalBtn({ label, onClick, primary, danger }: { label: string; onClick:
       style={{
         flex: 1, padding: "10px 0", borderRadius: 10, fontSize: 12, fontWeight: 800,
         cursor: "pointer", transition: "all .12s",
-        border: primary ? "none" : danger ? "1px solid rgba(248,113,113,0.3)" : "1px solid rgba(255,255,255,0.07)",
+        border: primary ? "none" : danger ? "1px solid rgba(248,113,113,0.3)" : "1px solid var(--g07)",
         background: primary
-          ? "rgba(232,232,232,0.92)"
-          : danger ? "rgba(248,113,113,0.1)" : "rgba(255,255,255,0.03)",
+          ? "var(--accent)"
+          : danger ? "rgba(248,113,113,0.1)" : "var(--g03)",
         color: primary ? "#0a0a0a" : danger ? "var(--red)" : "var(--t2)",
-        boxShadow: primary ? "0 4px 14px rgba(232,232,232,0.25)" : "none",
+        boxShadow: primary ? "0 4px 14px var(--g25)" : "none",
       }}
       onMouseEnter={e => { e.currentTarget.style.filter = "brightness(1.1)"; }}
       onMouseLeave={e => { e.currentTarget.style.filter = "none"; }}

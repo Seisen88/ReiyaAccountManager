@@ -10,6 +10,7 @@ import Hub          from "./pages/Hub";
 import Utilities    from "./pages/Utilities";
 import Settings     from "./pages/Settings";
 import Bootstrapper from "./pages/Bootstrapper";
+import ThemePage    from "./pages/Theme";
 import LaunchProgress from "./pages/LaunchProgress";
 import Onboarding    from "./pages/Onboarding";
 import KeyGate       from "./pages/KeyGate";
@@ -50,6 +51,7 @@ function AppContent() {
             <Route path="/hub"          element={<Hub />} />
             <Route path="/utilities"    element={<Utilities />} />
             <Route path="/bootstrapper" element={<Bootstrapper />} />
+            <Route path="/theme"        element={<ThemePage />} />
             <Route path="/settings"     element={<Settings />} />
           </Routes>
         </main>
@@ -61,7 +63,7 @@ function AppContent() {
 function AppInner() {
   const { updateInfo, showUpdateModal, closeUpdateModal } = useUpdate();
   const { t, setLanguage } = useLanguage();
-  const { setAccentColor } = useTheme();
+  const { setTheme } = useTheme();
   const [licenseChecked, setLicenseChecked] = useState(false);
   const [licenseStatus, setLicenseStatus]   = useState<LicenseStatus | null>(null);
   const [onboardingDone, setOnboardingDone] = useState(
@@ -78,7 +80,11 @@ function AppInner() {
       setLicenseStatus(status);
       setLicenseChecked(true);
       if (settings?.Language) setLanguage(settings.Language);
-      if (settings?.AccentColor) setAccentColor(settings.AccentColor);
+      if (settings?.ThemeName) {
+        const saved = THEMES.find(t => t.id === settings.ThemeName);
+        if (saved) setTheme(saved);
+        else applyTheme(THEMES[0]);
+      }
       if (settings?.AppLockEnabled) setLocked(true);
       if (settings?.AppLockOnMinimize) setLockOnMinimize(true);
     });
@@ -134,7 +140,7 @@ function AppInner() {
 }
 
 import { LanguageProvider } from "./context/LanguageContext";
-import { ThemeProvider, useTheme } from "./context/ThemeContext";
+import { ThemeProvider, useTheme, THEMES, applyTheme } from "./context/ThemeContext";
 
 export default function App() {
   return (

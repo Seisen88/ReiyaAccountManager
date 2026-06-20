@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useLanguage } from "../context/LanguageContext";
@@ -38,7 +38,7 @@ export default function LaunchProgress() {
         width: "100vw",
         height: "100vh",
         background: "radial-gradient(circle at center, #1e1f29 0%, #0c0d12 100%)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
+        border: "1px solid var(--g08)",
         borderRadius: 16,
         display: "flex",
         flexDirection: "column",
@@ -100,8 +100,8 @@ export default function LaunchProgress() {
             width: 76,
             height: 76,
             borderRadius: 20,
-            background: "rgba(255, 255, 255, 0.02)",
-            border: "1px solid rgba(255, 255, 255, 0.06)",
+            background: "var(--g02)",
+            border: "1px solid var(--g06)",
             boxShadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
             display: "flex",
             alignItems: "center",
@@ -167,10 +167,10 @@ export default function LaunchProgress() {
           style={{
             width: "100%",
             height: 6,
-            background: "rgba(255, 255, 255, 0.04)",
+            background: "var(--g04)",
             borderRadius: 99,
             overflow: "hidden",
-            border: "1px solid rgba(255, 255, 255, 0.02)",
+            border: "1px solid var(--g02)",
           }}
         >
           {/* Progress Bar Fill */}
@@ -203,7 +203,7 @@ export default function LaunchProgress() {
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.color = "var(--t1)";
-            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+            e.currentTarget.style.borderColor = "var(--g20)";
             e.currentTarget.style.background = "var(--surface-3)";
           }}
           onMouseLeave={(e) => {

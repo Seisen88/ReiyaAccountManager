@@ -26,7 +26,7 @@ struct LaunchProgressPayload {
 mod browser_extractor;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub user_id: i64,
     pub username: String,
@@ -300,6 +300,28 @@ fn accounts_path() -> PathBuf {
     data_dir().join("accounts.json")
 }
 
+fn session_tracker_path() -> PathBuf {
+    data_dir().join("session_tracker.json")
+}
+
+fn save_session_tracker(tracker: &SessionTracker) {
+    let map = tracker.0.lock().unwrap();
+    let data: Vec<(u64, SessionInfo)> = map.iter()
+        .map(|(&id, (_, info))| (id, info.clone()))
+        .collect();
+    if let Ok(s) = serde_json::to_string_pretty(&data) {
+        let _ = fs::write(session_tracker_path(), s);
+    }
+}
+
+fn load_session_tracker_data() -> HashMap<u64, (Option<u32>, SessionInfo)> {
+    fs::read_to_string(session_tracker_path())
+        .ok()
+        .and_then(|s| serde_json::from_str::<Vec<(u64, SessionInfo)>>(&s).ok())
+        .map(|v| v.into_iter().map(|(id, info)| (id, (None::<u32>, info))).collect())
+        .unwrap_or_default()
+}
+
 fn clean_bom(s: &str) -> &str {
     s.strip_prefix("\u{feff}").unwrap_or(s)
 }
@@ -434,6 +456,8 @@ pub struct SessionDto {
     user_id: Option<i64>,
     username: Option<String>,
     avatar_url: Option<String>,
+    game_name: Option<String>,
+    start_time: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -1289,7 +1313,11 @@ async fn launch_account(
         place_id: place_id.unwrap_or_else(|| "1818".to_string()),
         start_time: launch_time.to_rfc3339(),
     };
-    tracker.0.lock().unwrap().insert(browser_tracker_id, (None, session_info));
+    {
+        let mut map = tracker.0.lock().unwrap();
+        map.insert(browser_tracker_id, (None, session_info));
+    }
+    save_session_tracker(&tracker);
 
     if use_bootstrapper {
         // Resolve which launcher to actually use
@@ -1385,7 +1413,6 @@ async fn launch_account(
 #[tauri::command]
 fn get_live_sessions(tracker: tauri::State<'_, SessionTracker>) -> Vec<SessionDto> {
     let pid_map = tracker.0.lock().unwrap().clone();
-
     let sys = System::new_all();
 
     sys.processes()
@@ -1396,27 +1423,41 @@ fn get_live_sessions(tracker: tauri::State<'_, SessionTracker>) -> Vec<SessionDt
         })
         .map(|p| {
             let pid = p.pid().as_u32();
-            let cmd_args = p.cmd().to_vec();
-            let bt_id = extract_browser_tracker_id(&cmd_args);
+            let bt_id = extract_browser_tracker_id(p.cmd());
 
             let mut user_id = None;
             let mut username = None;
             let mut avatar_url = None;
+            let mut game_name = None;
+            let mut start_time = None;
 
+            // Primary: look up by browserTrackerId extracted from process args
             if let Some(id) = bt_id {
                 if let Some((_, info)) = pid_map.get(&id) {
-                    user_id = Some(info.user_id);
-                    username = Some(info.username.clone());
+                    user_id   = Some(info.user_id);
+                    username  = Some(info.username.clone());
                     avatar_url = Some(info.avatar_url.clone());
+                    game_name = Some(info.game_name.clone());
+                    start_time = Some(info.start_time.clone());
                 }
             }
 
-            SessionDto {
-                pid,
-                user_id,
-                username,
-                avatar_url,
+            // Fallback: scan tracker entries for a matching PID
+            // (populated by the watchdog's time-based matching)
+            if username.is_none() {
+                for (_, (opt_pid, info)) in pid_map.iter() {
+                    if *opt_pid == Some(pid) {
+                        user_id    = Some(info.user_id);
+                        username   = Some(info.username.clone());
+                        avatar_url = Some(info.avatar_url.clone());
+                        game_name  = Some(info.game_name.clone());
+                        start_time = Some(info.start_time.clone());
+                        break;
+                    }
+                }
             }
+
+            SessionDto { pid, user_id, username, avatar_url, game_name, start_time }
         })
         .collect()
 }
@@ -1449,6 +1490,7 @@ fn kill_session(pid: u32, tracker: tauri::State<'_, SessionTracker>) -> Result<(
             .map(|info| (info.username, info.avatar_url, Some(info.user_id)))
             .unwrap_or_else(|| (String::new(), String::new(), None));
 
+        save_session_tracker(&tracker);
         append_event(EventEntry {
             timestamp: Utc::now().to_rfc3339(), kind: "killed".into(),
             user_id, username: Some(ev_name.clone()), avatar_url: Some(ev_avatar),
@@ -1472,6 +1514,7 @@ fn kill_all_sessions(tracker: tauri::State<'_, SessionTracker>) -> u32 {
         }
     }
     tracker.0.lock().unwrap().clear();
+    save_session_tracker(&tracker);
     killed
 }
 
@@ -5012,7 +5055,8 @@ fn sync_run_on_startup(enable: bool) {
     if let Ok(run_key) = hkcu.open_subkey_with_flags(r"Software\Microsoft\Windows\CurrentVersion\Run", KEY_WRITE) {
         if enable {
             if let Ok(exe_path) = std::env::current_exe() {
-                let path_str = exe_path.to_string_lossy().into_owned();
+                // Quote the path so Windows handles spaces in directory names correctly
+                let path_str = format!("\"{}\"", exe_path.to_string_lossy());
                 let _ = run_key.set_value("ReiyaAccountManager", &path_str);
             }
         } else {
@@ -5030,7 +5074,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(SessionTracker(std::sync::Arc::new(Mutex::new(HashMap::new()))))
+        .manage(SessionTracker(std::sync::Arc::new(Mutex::new(load_session_tracker_data()))))
         .manage(MultiState::new(load_multi_instance_from_settings()))
         .setup(|app| {
             // ── System tray ───────────────────────────────────────────────
@@ -5115,6 +5159,21 @@ pub fn run() {
                 }
             }
 
+            // ── Refresh Run-on-Startup registry entry on every boot ────────
+            // This ensures the registry always points to the current exe path
+            // even after reinstalls or updates that move the binary.
+            #[cfg(windows)]
+            {
+                let settings_path = data_dir().join("settings.json");
+                let run_on_startup = settings_path.exists()
+                    .then(|| fs::read_to_string(&settings_path).ok())
+                    .flatten()
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&clean_bom(&s)).ok())
+                    .and_then(|v| v.get("RunOnStartup").and_then(|b| b.as_bool()))
+                    .unwrap_or(false);
+                sync_run_on_startup(run_on_startup);
+            }
+
             let tracker = app.state::<SessionTracker>().inner().clone();
             let app_handle = app.handle().clone();
 
@@ -5184,7 +5243,8 @@ pub fn run() {
                                     let start_time_parsed = DateTime::parse_from_rfc3339(&info.start_time)
                                         .map(|dt| dt.with_timezone(&Utc))
                                         .unwrap_or(now);
-                                    if now.signed_duration_since(start_time_parsed).num_seconds() > 30 {
+                                    // Give 120s for the game to start before removing the entry
+                                    if now.signed_duration_since(start_time_parsed).num_seconds() > 120 {
                                         keys_to_remove.push(bt_id);
                                     }
                                 }
@@ -5193,6 +5253,40 @@ pub fn run() {
 
                         for key in keys_to_remove {
                             map.remove(&key);
+                        }
+
+                        // ── Time-based PID fallback ────────────────────────────────
+                        // When browserTrackerId extraction fails (Roblox bootstrapper
+                        // may replace our id), match unmatched tracker entries to
+                        // unmatched Roblox processes by launch time order.
+                        let already_matched: std::collections::HashSet<u32> = map.values()
+                            .filter_map(|(opt_pid, _)| *opt_pid)
+                            .collect();
+
+                        let mut free_pids: Vec<u32> = sys.processes().values()
+                            .filter(|p| {
+                                let n = p.name().to_string_lossy().to_lowercase();
+                                (n == "robloxplayerbeta.exe" || n == "roblox")
+                                    && !already_matched.contains(&p.pid().as_u32())
+                            })
+                            .map(|p| p.pid().as_u32())
+                            .collect();
+                        free_pids.sort_unstable();
+
+                        if !free_pids.is_empty() {
+                            let mut fi = 0;
+                            for (opt_pid, info) in map.values_mut() {
+                                if fi >= free_pids.len() { break; }
+                                if opt_pid.is_none() {
+                                    let start = DateTime::parse_from_rfc3339(&info.start_time)
+                                        .map(|dt| dt.with_timezone(&Utc))
+                                        .unwrap_or(now);
+                                    if now.signed_duration_since(start).num_seconds() <= 120 {
+                                        *opt_pid = Some(free_pids[fi]);
+                                        fi += 1;
+                                    }
+                                }
+                            }
                         }
                     }
 
