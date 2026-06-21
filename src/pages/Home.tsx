@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -43,6 +43,13 @@ interface Account {
   launch_cooldown_seconds: number;
   password?: string;
   group?: string;
+}
+
+interface LoginResultPayload {
+  cookie: string | null;
+  window_label: string;
+  target_username: string | null;
+  error: string | null;
 }
 
 interface Session {
@@ -823,18 +830,24 @@ export default function Home() {
     }
   };
 
-  const loginOneAccount = (username?: string, password?: string): Promise<string | null> => {
+  const loginOneAccount = (username?: string, password?: string): Promise<LoginResultPayload | null> => {
     return new Promise((resolve) => {
       let unlisten: (() => void) | null = null;
+      const windowLabel = `login-${Math.floor(Math.random() * 1000000000)}`;
+
       const setupListener = async () => {
-        unlisten = await listen<string | null>("login-cookie-result", (event) => {
-          if (unlisten) unlisten();
-          resolve(event.payload);
+        unlisten = await listen<LoginResultPayload>("login-cookie-result", (event) => {
+          if (event.payload.window_label === windowLabel) {
+            if (unlisten) unlisten();
+            resolve(event.payload);
+          }
         });
       };
+
       setupListener().then(async () => {
         try {
           await invoke("open_login_window", { 
+            windowLabel,
             username: username || null, 
             password: password || null 
           });
@@ -851,14 +864,17 @@ export default function Home() {
     setAddMenu(false);
     setLoginLoading(true);
     try {
-      const cookie = await loginOneAccount();
-      if (cookie) {
-        const acc = await invoke<Account>("add_account", { cookie });
+      const res = await loginOneAccount();
+      if (res && res.cookie) {
+        const acc = await invoke<Account>("add_account", { cookie: res.cookie });
         setAccounts(prev => {
           const idx = prev.findIndex(a => a.user_id === acc.user_id);
           return idx >= 0 ? prev.map((a, i) => i === idx ? acc : a) : [...prev, acc];
         });
         await refreshAccounts();
+      } else {
+        const reason = res?.error || "Login window was closed or cookie extraction failed.";
+        alert(`Manual login not saved:\n\n${reason}\n\nIf you solved a CAPTCHA or 2FA, please make sure you completed the verification successfully.`);
       }
     } catch (e) {
       alert(`Manual login failed: ${String(e)}`);
@@ -871,45 +887,71 @@ export default function Home() {
     const lines = combosText.split("\n")
       .map(l => l.trim())
       .filter(l => l.includes(":") && l.length > 2);
-    
+
     if (lines.length === 0) {
       setLoginError("No valid combos found. Format: username:password");
       return;
     }
 
     setLoginLoading(true);
-    setLoginError("");
-    
+    const total = lines.length;
     let successCount = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const [username, password] = lines[i].split(":", 2).map(s => s.trim());
-      setLoginError(`Processing ${i + 1}/${lines.length}: ${username}...`);
+    let doneCount = 0;
+
+    const pwMap: Record<string, string> = {};
+    for (const line of lines) {
+      const [u, p] = line.split(":", 2).map(s => s.trim());
+      if (u) pwMap[u.toLowerCase()] = p ?? "";
+    }
+
+    const failedAccounts: string[] = [];
+    const succeededAccounts: string[] = [];
+
+    // Process all imports in parallel (staggered window opening)
+    const promises = lines.map(async (line, index) => {
+      const [username, password] = line.split(":", 2).map(s => s.trim());
+      // Stagger window opens by 800ms each so WebView2 environments initialise cleanly
+      await new Promise(r => setTimeout(r, index * 800));
       
-      const cookie = await loginOneAccount(username, password);
-      if (cookie) {
+      setLoginError(`Opening window ${index + 1}/${total}: ${username}...`);
+      const res = await loginOneAccount(username, password);
+      doneCount++;
+      setLoginError(`${doneCount}/${total} windows completed...`);
+
+      if (res && res.cookie) {
         try {
-          const acc = await invoke<Account>("add_account", { cookie });
-          if (password) {
-            await invoke("save_account_password", { userId: acc.user_id, password }).catch(() => {});
-          }
+          const acc = await invoke<Account>("add_account", { cookie: res.cookie });
+          const pw = pwMap[acc.username.toLowerCase()] ?? "";
+          if (pw) await invoke("save_account_password", { userId: acc.user_id, password: pw }).catch(() => {});
           setAccounts(prev => {
             const idx = prev.findIndex(a => a.user_id === acc.user_id);
-            const updated = { ...acc, password };
+            const updated = { ...acc, password: pw };
             return idx >= 0 ? prev.map((a, i) => i === idx ? updated : a) : [...prev, updated];
           });
+          succeededAccounts.push(acc.username);
           successCount++;
-        } catch (e) {
-          console.error(`Failed to register ${username}: ${String(e)}`);
+        } catch (err) {
+          console.error("add_account failed:", err);
+          failedAccounts.push(`${username} (add_account error: ${err})`);
         }
+      } else {
+        const reason = res?.error || "Window closed or interception timed out.";
+        failedAccounts.push(`${username} (${reason})`);
       }
-    }
+    });
+
+    setLoginError(`All ${total} windows opened — waiting for logins...`);
+    await Promise.all(promises);
 
     setLoginLoading(false);
     setShowUserPass(false);
     setComboText("");
     await refreshAccounts();
-    alert(`Done! Successfully imported ${successCount} out of ${lines.length} account(s).`);
+
+    let msg = `Done! Imported ${successCount}/${total} account(s).`;
+    if (succeededAccounts.length > 0) msg += `\n\n✓ Success:\n${succeededAccounts.map(u => `  • ${u}`).join("\n")}`;
+    if (failedAccounts.length > 0) msg += `\n\n✗ Failed (${failedAccounts.length}):\n${failedAccounts.map(f => `  • ${f}`).join("\n")}`;
+    alert(msg);
   };
 
 

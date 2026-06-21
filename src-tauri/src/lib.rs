@@ -1615,27 +1615,60 @@ async fn fetch_place_thumbnails(place_ids: Vec<String>) -> Result<HashMap<String
 
 // ── Login Window (Manual Login + User:Pass) ───────────────────────────────────
 
+#[derive(Clone, Serialize, Deserialize)]
+struct LoginResultPayload {
+    cookie: Option<String>,
+    window_label: String,
+    target_username: Option<String>,
+    error: Option<String>,
+}
+
 /// Extracts .ROBLOSECURITY from the WebView2 cookie manager, closes the webview and emits
 /// "login-cookie-result".
 #[cfg(target_os = "windows")]
 fn extract_webview_cookie_and_close(
-    webview: tauri::webview::PlatformWebview,
+    core: &webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2,
     app: AppHandle,
     window_label: String,
     cookie_found: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    target_username: Option<String>,
+    attempt: u32,
 ) {
     use webview2_com::{
         GetCookiesCompletedHandler,
         Microsoft::Web::WebView2::Win32::ICoreWebView2_2,
     };
-    use windows::core::{HSTRING, PCWSTR, PWSTR};
+    use windows::core::{HSTRING, Interface, PCWSTR, PWSTR};
     use std::sync::atomic::Ordering;
 
+    if cookie_found.load(Ordering::Relaxed) {
+        return;
+    }
+
+    if attempt > 30 {
+        // Timeout after 3 seconds of polling
+        if cookie_found.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+            let app_c = app.clone();
+            let wl_c = window_label.clone();
+            let target_username_c = target_username.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(win) = app_c.get_webview_window(&wl_c) {
+                    let _ = win.close();
+                }
+                let payload = LoginResultPayload {
+                    cookie: None,
+                    window_label: wl_c,
+                    target_username: target_username_c,
+                    error: Some("Cookie manager timeout: Login was successful but Roblox cookie could not be retrieved from WebView2 cookie jar within 3 seconds.".to_string()),
+                };
+                let _ = app_c.emit("login-cookie-result", payload);
+            });
+        }
+        return;
+    }
+
     unsafe {
-        let core2: ICoreWebView2_2 = match webview.controller().CoreWebView2().and_then(|c| {
-            use windows::core::Interface;
-            c.cast::<ICoreWebView2_2>()
-        }) {
+        let core2: ICoreWebView2_2 = match core.cast::<ICoreWebView2_2>() {
             Ok(c) => c,
             Err(_) => return,
         };
@@ -1647,6 +1680,7 @@ fn extract_webview_cookie_and_close(
         let app2 = app.clone();
         let wl2 = window_label.clone();
         let cf2 = cookie_found.clone();
+        let target_username2 = target_username.clone();
 
         let handler = GetCookiesCompletedHandler::create(Box::new(move |_result, list| {
             let mut found: Option<String> = None;
@@ -1675,19 +1709,115 @@ fn extract_webview_cookie_and_close(
                     let app_c = app2.clone();
                     let wl_c = wl2.clone();
                     let cookie_val_c = cookie_val.clone();
+                    let target_username_c = target_username2.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Some(win) = app_c.get_webview_window(&wl_c) {
                             let _ = win.close();
                         }
-                        let _ = app_c.emit("login-cookie-result", Some(cookie_val_c));
+                        let payload = LoginResultPayload {
+                            cookie: Some(cookie_val_c),
+                            window_label: wl_c,
+                            target_username: target_username_c,
+                            error: None,
+                        };
+                        let _ = app_c.emit("login-cookie-result", payload);
                     });
                 }
+            } else {
+                let app_c = app2.clone();
+                let wl_c = wl2.clone();
+                let cf_c = cf2.clone();
+                let target_username_c = target_username2.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    let app_c2 = app_c.clone();
+                    let wl_c2 = wl_c.clone();
+                    let cf_c2 = cf_c.clone();
+                    let target_username_c2 = target_username_c.clone();
+                    let _ = app_c.run_on_main_thread(move || {
+                        if let Some(win) = app_c2.get_webview_window(&wl_c2) {
+                            let _ = win.with_webview(move |wv| {
+                                #[cfg(target_os = "windows")]
+                                {
+                                    if let Ok(c) = wv.controller().CoreWebView2() {
+                                        extract_webview_cookie_and_close(&c, app_c2.clone(), wl_c2.clone(), cf_c2.clone(), target_username_c2.clone(), attempt + 1);
+                                    }
+                                }
+                                #[cfg(not(target_os = "windows"))]
+                                {
+                                    let _ = app_c2;
+                                    let _ = wl_c2;
+                                    let _ = cf_c2;
+                                    let _ = target_username_c2;
+                                }
+                            });
+                        }
+                    });
+                });
             }
             Ok(())
         }));
 
         let uri = HSTRING::from("https://www.roblox.com");
         let _ = mgr.GetCookies(PCWSTR(uri.as_ptr()), &handler);
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn setup_webresource_response_received_handler(
+    webview: &tauri::webview::PlatformWebview,
+    app: AppHandle,
+    window_label: String,
+    cookie_found: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    target_username: Option<String>,
+) {
+    use webview2_com::{
+        WebResourceResponseReceivedEventHandler,
+        Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2_2},
+    };
+    use windows::core::Interface;
+
+    unsafe {
+        let c: ICoreWebView2 = match webview.controller().CoreWebView2() {
+            Ok(core) => core,
+            Err(_) => return,
+        };
+
+        let c2: ICoreWebView2_2 = match c.cast::<ICoreWebView2_2>() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let app2 = app.clone();
+        let wl2 = window_label.clone();
+        let cf2 = cookie_found.clone();
+        let c_clone = c.clone();
+        let target_username2 = target_username.clone();
+
+        let handler = WebResourceResponseReceivedEventHandler::create(Box::new(move |_wv, args| {
+            if let Some(args) = args {
+                if let Ok(req) = args.Request() {
+                    let mut uri_pwstr = windows::core::PWSTR::null();
+                    if req.Uri(&mut uri_pwstr).is_ok() {
+                        let uri_str = uri_pwstr.to_string().unwrap_or_default();
+                        if uri_str.contains("auth.roblox.com") && (uri_str.contains("login") || uri_str.contains("two-step") || uri_str.contains("twostep") || uri_str.contains("verify") || uri_str.contains("challenge")) {
+                            if let Ok(resp) = args.Response() {
+                                let mut status = 0;
+                                if resp.StatusCode(&mut status).is_ok() {
+                                    if status == 200 {
+                                        extract_webview_cookie_and_close(&c_clone, app2.clone(), wl2.clone(), cf2.clone(), target_username2.clone(), 0);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }));
+
+        let mut token = 0i64;
+        let _ = c2.add_WebResourceResponseReceived(&handler, &mut token);
     }
 }
 
@@ -1698,92 +1828,273 @@ fn extract_webview_cookie_and_close(
 #[tauri::command]
 async fn open_login_window(
     app: AppHandle,
+    window_label: String,
     username: Option<String>,
     password: Option<String>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     use tauri::{WebviewWindowBuilder, WebviewUrl};
-    use rand::RngCore;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    let mut init = String::new();
-
-    // Auto-fill for User:Pass mode
-    if let (Some(ref u), Some(ref p)) = (username.as_ref(), password.as_ref()) {
+    // Build the autofill script to inject after DOMContentLoaded on the login page,
+    // matching the C# manager's DOMContentLoaded + ExecuteScriptAsync approach.
+    // Inner fill body — wrapped in a tryFill retry loop by the on_page_load handler
+    let autofill_script: Option<String> = if let (Some(ref u), Some(ref p)) = (&username, &password) {
         let ue = u.replace('\\', "\\\\").replace('\'', "\\'");
         let pe = p.replace('\\', "\\\\").replace('\'', "\\'");
-        init.push_str(&format!(r#"
-(function autoFill() {{
-    var un = document.querySelector('#login-username');
-    var pw = document.querySelector('#login-password');
-    if (!un || !pw) {{ setTimeout(autoFill, 300); return; }}
-    var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+        Some(format!(r#"var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
     setter.call(un, '{ue}'); un.dispatchEvent(new Event('input', {{ bubbles: true }}));
     setter.call(pw, '{pe}'); pw.dispatchEvent(new Event('input', {{ bubbles: true }}));
     setTimeout(function() {{
         var btn = document.querySelector('#login-button');
         if (btn) btn.click();
-    }}, 400);
-}})();
-"#, ue = ue, pe = pe));
-    }
+    }}, 300);"#, ue = ue, pe = pe))
+    } else {
+        None
+    };
 
-    let mut rng = rand::rngs::OsRng;
-    let label = format!("login-{}", rng.next_u32());
+    let label = window_label;
     let label_clone = label.clone();
     let app_clone = app.clone();
 
     let cookie_found = Arc::new(AtomicBool::new(false));
     let cookie_found_clone = cookie_found.clone();
+    let target_username_clone = username.clone();
+
+    // Determine the browser profile user data directory.
+    // For combo logins (where username is known), we use a persistent profile folder
+    // dedicated to that username. For anonymous manual logins, we use a temporary folder.
+    let data_dir = if let Some(ref u) = username {
+        let profile_name = u.to_lowercase().replace(|c: char| !c.is_alphanumeric(), "_");
+        data_dir().join("login_profiles").join(profile_name)
+    } else {
+        std::env::temp_dir().join(format!("reiya-login-{}", &label))
+    };
 
     let login_url: url::Url = "https://www.roblox.com/login".parse().map_err(|e: url::ParseError| e.to_string())?;
     let win = WebviewWindowBuilder::new(
         &app,
-        label,
+        label.clone(),
         WebviewUrl::External(login_url),
     )
     .title("Roblox Login")
     .inner_size(500.0, 660.0)
     .resizable(true)
-    .initialization_script(&init)
+    .data_directory(data_dir.clone())
     .on_page_load(move |win, payload| {
         use tauri::webview::PageLoadEvent;
-        // Only check after a finished navigation, and only after leaving the login/captcha pages
-        if payload.event() != PageLoadEvent::Finished {
-            return;
-        }
         let url = payload.url().to_string();
-        if url.contains("roblox.com/login")
-            || url.contains("roblox.com/challenge")
-            || url.contains("roblox.com/newlogin")
-            || url.contains("about:blank")
-        {
-            return;
+
+        match payload.event() {
+            // Finished = DOMContentLoaded: autofill credentials on the login page.
+            // Uses a retry loop (like ic3w0lf22's WaitForSelectorAsync) in case
+            // React hasn't hydrated the inputs yet.
+            PageLoadEvent::Finished => {
+                if let Some(ref script) = autofill_script {
+                    if url.contains("roblox.com/login") {
+                        let retry_script = format!(r#"
+(function tryFill() {{
+    var un = document.querySelector('#login-username');
+    var pw = document.querySelector('#login-password');
+    if (!un || !pw) {{ setTimeout(tryFill, 100); return; }}
+    {}
+}})();
+"#, script.trim());
+                        let _ = win.eval(&retry_script);
+                    }
+                }
+            }
+            // Started = navigation event: only check for cookie when navigated AWAY
+            // from the login page to an authenticated page (evanovar + ic3w0lf22 style).
+            // Skipping checks on /login itself avoids false cookie lookups.
+            PageLoadEvent::Started => {
+                if cookie_found_clone.load(std::sync::atomic::Ordering::Relaxed) {
+                    return;
+                }
+                // Only check once we've left the login/signup pages
+                let is_auth_page = !url.contains("roblox.com/login")
+                    && !url.contains("roblox.com/newlogin")
+                    && (url.contains("roblox.com/home")
+                        || url.contains("roblox.com/games")
+                        || url.contains("roblox.com/discover")
+                        || url.contains("roblox.com/catalog")
+                        || url.contains("roblox.com/my/")
+                        || url.contains("roblox.com/users/")
+                        || url.contains("roblox.com/profile")
+                        || url.contains("roblox.com/friends")
+                        || url.contains("roblox.com/groups")
+                        // fallback: any roblox.com page that isn't login
+                        || (url.contains("roblox.com") && !url.contains("/login")));
+                if !is_auth_page {
+                    return;
+                }
+                let app_inner = app_clone.clone();
+                let label_inner = label_clone.clone();
+                let cookie_found_inner = cookie_found_clone.clone();
+                let target_username_inner = target_username_clone.clone();
+                let _ = win.with_webview(move |wv| {
+                    #[cfg(target_os = "windows")]
+                    unsafe {
+                        if let Ok(c) = wv.controller().CoreWebView2() {
+                            extract_webview_cookie_and_close(&c, app_inner, label_inner, cookie_found_inner, target_username_inner, 0);
+                        }
+                    }
+                    #[cfg(not(target_os = "windows"))]
+                    let _ = app_inner;
+                });
+            }
         }
-        let app_inner = app_clone.clone();
-        let label_inner = label_clone.clone();
-        let cookie_found_inner = cookie_found_clone.clone();
-        let _ = win.with_webview(move |wv| {
-            #[cfg(target_os = "windows")]
-            extract_webview_cookie_and_close(wv, app_inner, label_inner, cookie_found_inner);
-            #[cfg(not(target_os = "windows"))]
-            let _ = app_inner;
-        });
     })
     .build()
     .map_err(|e| e.to_string())?;
 
+    let app_inner = app.clone();
+    let label_inner = win.label().to_string();
+    let cookie_found_inner = cookie_found.clone();
+    let target_username_handler = username.clone();
+
+    let _ = win.with_webview(move |wv| {
+        #[cfg(target_os = "windows")]
+        setup_webresource_response_received_handler(&wv, app_inner, label_inner, cookie_found_inner, target_username_handler);
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = app_inner;
+            let _ = label_inner;
+            let _ = cookie_found_inner;
+        }
+    });
+
     let app_close = app.clone();
     let cookie_found_close = cookie_found.clone();
+    let data_dir_close = data_dir.clone();
+    let target_username_close = username.clone();
+    let label_close_event = win.label().to_string();
     win.on_window_event(move |event| {
         if let tauri::WindowEvent::Destroyed = event {
             if !cookie_found_close.load(std::sync::atomic::Ordering::Relaxed) {
-                let _ = app_close.emit("login-cookie-result", Option::<String>::None);
+                let payload = LoginResultPayload {
+                    cookie: None,
+                    window_label: label_close_event.clone(),
+                    target_username: target_username_close.clone(),
+                    error: Some("Login window was closed manually or cookie extraction failed.".to_string()),
+                };
+                let _ = app_close.emit("login-cookie-result", payload);
+            }
+            // Clean up the isolated data dir only for anonymous manual logins (when username is None)
+            if target_username_close.is_none() {
+                let dir = data_dir_close.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_secs(3));
+                    let _ = std::fs::remove_dir_all(&dir);
+                });
             }
         }
     });
 
-    Ok(())
+    Ok(label)
+}
+
+/// Authenticate directly via Roblox HTTP API — no browser/WebView involved.
+/// Returns the raw .ROBLOSECURITY cookie value on success.
+#[tauri::command]
+async fn login_with_credentials(username: String, password: String) -> Result<String, String> {
+    // Cookie jar so cookies from the 403 response are replayed on the second request,
+    // exactly as a real browser session would do.
+    let jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        .cookie_provider(jar)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let body = serde_json::json!({
+        "ctype": "Username",
+        "cvalue": username,
+        "password": password
+    });
+
+    let common_headers = [
+        ("Accept",           "application/json, text/plain, */*"),
+        ("Accept-Language",  "en-US,en;q=0.9"),
+        ("Origin",           "https://www.roblox.com"),
+        ("Referer",          "https://www.roblox.com/login"),
+        ("sec-ch-ua",        r#""Chromium";v="131","Google Chrome";v="131","Not_A Brand";v="24""#),
+        ("sec-ch-ua-mobile", "?0"),
+        ("sec-ch-ua-platform", "\"Windows\""),
+        ("sec-fetch-dest",   "empty"),
+        ("sec-fetch-mode",   "cors"),
+        ("sec-fetch-site",   "same-site"),
+    ];
+
+    // First request — intentionally expect 403 to get the CSRF token.
+    let mut req1 = client
+        .post("https://auth.roblox.com/v2/login")
+        .json(&body);
+    for (k, v) in &common_headers { req1 = req1.header(*k, *v); }
+    let resp1 = req1.send().await.map_err(|e| format!("Network error: {}", e))?;
+
+    let csrf = resp1
+        .headers()
+        .get("x-csrf-token")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+
+    if resp1.status().is_success() {
+        for hdr in resp1.headers().get_all("set-cookie").iter() {
+            if let Ok(s) = hdr.to_str() {
+                if s.contains(".ROBLOSECURITY=") {
+                    return Ok(clean_cookie(s));
+                }
+            }
+        }
+    }
+
+    let csrf_token = csrf.ok_or_else(|| "Failed to obtain CSRF token from Roblox".to_string())?;
+
+    // Second request — real login attempt with CSRF token.
+    let mut req2 = client
+        .post("https://auth.roblox.com/v2/login")
+        .header("x-csrf-token", &csrf_token)
+        .json(&body);
+    for (k, v) in &common_headers { req2 = req2.header(*k, *v); }
+    let resp2 = req2.send().await.map_err(|e| format!("Network error: {}", e))?;
+
+    let status = resp2.status();
+
+    if status.is_success() {
+        for hdr in resp2.headers().get_all("set-cookie").iter() {
+            if let Ok(s) = hdr.to_str() {
+                if s.contains(".ROBLOSECURITY=") {
+                    return Ok(clean_cookie(s));
+                }
+            }
+        }
+        return Err("Login succeeded but .ROBLOSECURITY cookie was not in the response".to_string());
+    }
+
+    let body_text = resp2.text().await.unwrap_or_default();
+
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body_text) {
+        if let Some(errors) = json["errors"].as_array() {
+            if let Some(first) = errors.first() {
+                let code = first["code"].as_i64().unwrap_or(0);
+                let msg = first["userFacingMessage"].as_str()
+                    .or_else(|| first["message"].as_str())
+                    .unwrap_or("Unknown error");
+                return match code {
+                    4 => Err("Invalid username or password.".to_string()),
+                    2 => Err("Account temporarily locked — too many failed attempts.".to_string()),
+                    _ => Err(format!("Roblox error ({}): {}", code, msg)),
+                };
+            }
+        }
+    }
+
+    if status.as_u16() == 403 {
+        return Err("CAPTCHA required — use Manual Login for this account.".to_string());
+    }
+
+    Err(format!("Login failed (HTTP {}): {}", status, body_text))
 }
 
 async fn resolve_share_link(cookie: &str, share_code: &str) -> Result<(String, String), String> {
@@ -3020,6 +3331,18 @@ async fn ensure_latest_and_launch(
     }
 
     let _ = repair_bootstrapper_folders(&exe_dir);
+
+    // Always re-apply FastFlags before launch so changes made in the UI
+    // take effect even when Roblox is already up-to-date (no reinstall).
+    let ff_path = bootstrapper_root().join("fastflags.json");
+    if ff_path.exists() {
+        if let Ok(ff_content) = fs::read_to_string(&ff_path) {
+            let client_settings_dir = exe_dir.join("ClientSettings");
+            let _ = fs::create_dir_all(&client_settings_dir);
+            let _ = fs::write(client_settings_dir.join("ClientAppSettings.json"), &ff_content);
+            eprintln!("[INFO] FastFlags applied to ClientSettings before launch.");
+        }
+    }
 
     if app.get_webview_window("launch_progress").is_none() {
         return Err("Launch cancelled by user".into());
@@ -5398,6 +5721,7 @@ pub fn run() {
             detect_roblox_installs,
             get_launcher_preference,
             set_launcher_preference,
+            login_with_credentials,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
