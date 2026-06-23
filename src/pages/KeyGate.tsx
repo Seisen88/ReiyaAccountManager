@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 interface Props {
-  reason: "missing" | "expired";
+  reason: "missing" | "expired" | "tampered" | string;
   onValidated: () => void;
 }
 
@@ -37,7 +37,8 @@ export default function KeyGate({ reason, onValidated }: Props) {
     invoke("open_key_website").catch(() => {});
   };
 
-  const isExpired = reason === "expired";
+  const isExpired   = reason === "expired";
+  const isTampered  = reason === "tampered";
 
   return (
     <div style={{
@@ -51,7 +52,7 @@ export default function KeyGate({ reason, onValidated }: Props) {
       {/* Ambient glow */}
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none",
-        background: isExpired
+        background: (isExpired || isTampered)
           ? "radial-gradient(ellipse 50% 35% at 50% 0%, rgba(248,113,113,0.05) 0%, transparent 70%)"
           : "radial-gradient(ellipse 50% 35% at 50% 0%, var(--g04) 0%, transparent 70%)",
       }} />
@@ -61,12 +62,12 @@ export default function KeyGate({ reason, onValidated }: Props) {
         {/* Logo / Icon */}
         <div style={{
           width: 72, height: 72, borderRadius: 18, marginBottom: 28,
-          background: isExpired ? "rgba(248,113,113,0.08)" : "var(--g06)",
-          border: `1px solid ${isExpired ? "rgba(248,113,113,0.2)" : "var(--g15)"}`,
-          boxShadow: `0 0 36px ${isExpired ? "rgba(248,113,113,0.08)" : "var(--g06)"}`,
+          background: (isExpired || isTampered) ? "rgba(248,113,113,0.08)" : "var(--g06)",
+          border: `1px solid ${(isExpired || isTampered) ? "rgba(248,113,113,0.2)" : "var(--g15)"}`,
+          boxShadow: `0 0 36px ${(isExpired || isTampered) ? "rgba(248,113,113,0.08)" : "var(--g06)"}`,
           display: "flex", alignItems: "center", justifyContent: "center",
         }}>
-          {isExpired ? (
+          {(isExpired || isTampered) ? (
             <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
@@ -81,11 +82,13 @@ export default function KeyGate({ reason, onValidated }: Props) {
 
         {/* Title */}
         <h1 style={{ fontSize: 26, fontWeight: 900, color: "#F0F1F6", letterSpacing: "-0.6px", marginBottom: 8, textAlign: "center" }}>
-          {isExpired ? "Your key has expired" : "License Required"}
+          {isTampered ? "License Tampered" : isExpired ? "Your key has expired" : "License Required"}
         </h1>
 
         <p style={{ fontSize: 12.5, color: "var(--t2)", textAlign: "center", lineHeight: 1.6, marginBottom: 32, maxWidth: 340 }}>
-          {isExpired
+          {isTampered
+            ? "Your license file has been modified and is no longer valid. Enter a genuine key below to continue."
+            : isExpired
             ? "Your Reiya license key has expired. Get a new key from the website and enter it below to continue."
             : "Reiya requires a valid license key to use. Get your free key from the website and paste it below."
           }

@@ -24,7 +24,7 @@ interface LicenseStatus {
   needs_key: boolean;
   key: string;
   expires_at: string | null;
-  reason: "missing" | "expired" | "valid";
+  reason: "missing" | "expired" | "tampered" | "valid";
 }
 
 const PAGE_LABELS: Record<string, string> = {
@@ -77,7 +77,7 @@ function AppContent() {
 }
 
 function AppInner() {
-  const { updateInfo, showUpdateModal, closeUpdateModal } = useUpdate();
+  const { updateInfo } = useUpdate();
   const { t, setLanguage } = useLanguage();
   const { setTheme } = useTheme();
   const [licenseChecked, setLicenseChecked] = useState(false);
@@ -87,6 +87,13 @@ function AppInner() {
   );
   const [locked, setLocked]               = useState(false);
   const [lockOnMinimize, setLockOnMinimize] = useState(false);
+  // Force re-render every 800ms while an update is pending so DevTools DOM removal is undone by React
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!updateInfo) return;
+    const id = setInterval(() => setTick(t => t + 1), 800);
+    return () => clearInterval(id);
+  }, [updateInfo]);
 
   useEffect(() => {
     Promise.all([
@@ -137,13 +144,11 @@ function AppInner() {
     <BrowserRouter>
       <BootstrapperProvider>
         {locked && <AppLock onUnlocked={() => setLocked(false)} />}
-        {/* Update modal — user-triggered from sidebar, not a mandatory blocker */}
-        {showUpdateModal && updateInfo && (
-          <UpdatePrompt info={updateInfo} onDismiss={closeUpdateModal} />
-        )}
+        {/* Mandatory update blocker — cannot be dismissed, survives restarts */}
+        {updateInfo && <UpdatePrompt info={updateInfo} />}
         {needsKey && (
           <KeyGate
-            reason={keyReason as "missing" | "expired"}
+            reason={keyReason as "missing" | "expired" | "tampered"}
             onValidated={() => setLicenseStatus(s => s ? { ...s, needs_key: false, reason: "valid" } : s)}
           />
         )}

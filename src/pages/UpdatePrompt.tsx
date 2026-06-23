@@ -19,7 +19,6 @@ interface ProgressPayload {
 
 interface Props {
   info: UpdateInfo;
-  onDismiss?: () => void;
 }
 
 function fmtBytes(b: number) {
@@ -28,7 +27,7 @@ function fmtBytes(b: number) {
   return `${b} B`;
 }
 
-export default function UpdatePrompt({ info, onDismiss }: Props) {
+export default function UpdatePrompt({ info }: Props) {
   const [uiPhase, setUiPhase] = useState<"idle" | "downloading" | "installing" | "done">("idle");
   const [progress, setProgress] = useState<ProgressPayload>({
     downloaded: 0, total: 0, percent: 0, phase: "downloading",
@@ -70,33 +69,17 @@ export default function UpdatePrompt({ info, onDismiss }: Props) {
   const barColor = uiPhase === "done" ? "var(--green)" : uiPhase === "installing" ? "#60a5fa" : "var(--green)";
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 99999,
-      background: "rgba(7,8,10,0.94)",
-      backdropFilter: "blur(16px)",
-      display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
-    }}>
-      {/* Dismiss button — only when not in progress */}
-      {uiPhase === "idle" && onDismiss && (
-        <button
-          onClick={onDismiss}
-          title="Remind me later"
-          style={{
-            position: "absolute", top: 18, right: 18,
-            background: "var(--g04)",
-            border: "1px solid var(--g08)",
-            borderRadius: 8, width: 32, height: 32,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            cursor: "pointer", color: "var(--t3)", fontSize: 16, lineHeight: 1,
-            transition: "all .12s",
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = "var(--g08)"; e.currentTarget.style.color = "var(--t1)"; }}
-          onMouseLeave={e => { e.currentTarget.style.background = "var(--g04)"; e.currentTarget.style.color = "var(--t3)"; }}
-        >
-          ✕
-        </button>
-      )}
+    <div
+      onContextMenu={e => e.preventDefault()}
+      style={{
+        position: "fixed", inset: 0, zIndex: 99999,
+        background: "rgba(7,8,10,0.97)",
+        backdropFilter: "blur(16px)",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        userSelect: "none",
+      }}
+    >
 
       {/* Top glow — shifts colour per phase */}
       <div style={{
