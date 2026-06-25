@@ -1,11 +1,13 @@
 ﻿import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { THEMES, useTheme, type Theme } from "../context/ThemeContext";
+import { useToast } from "../components/Toast";
 
 type Tab = "dark" | "light";
 
 export default function ThemePage() {
   const { activeTheme, setTheme } = useTheme();
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>(() =>
     activeTheme.category === "light" ? "light" : "dark"
   );
@@ -22,8 +24,9 @@ export default function ThemePage() {
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
-    } catch { /* silent */ }
-    finally { setSaving(false); }
+    } catch (e) {
+      toast.error(`Failed to save theme: ${e}`);
+    } finally { setSaving(false); }
   };
 
   const filtered = THEMES.filter(t => t.category === tab);

@@ -1,4 +1,5 @@
 import { useLanguage } from "../context/LanguageContext";
+import { useToast } from "../components/Toast";
 import { useState, useEffect, useCallback, useRef, type ReactNode, type DragEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -50,6 +51,7 @@ type SortBy = "last_launched" | "name_asc" | "name_desc" | "status" | "added" | 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 export default function Accounts() {
   const { t } = useLanguage();
+  const toast = useToast();
   const [accounts,    setAccounts]    = useState<Account[]>([]);
   const [filter,      setFilter]      = useState<FilterTab>("all");
   const [search,      setSearch]      = useState("");
@@ -190,9 +192,16 @@ export default function Accounts() {
       }
     };
     document.addEventListener("keydown", handleKey);
+
+    let unlistenAccounts: (() => void) | null = null;
+    listen("accounts-updated", () => {
+      loadAccounts();
+    }).then(fn => { unlistenAccounts = fn; });
+
     return () => {
       document.removeEventListener("click", handleOutsideClick);
       document.removeEventListener("keydown", handleKey);
+      if (unlistenAccounts) unlistenAccounts();
     };
   }, [loadAccounts]);
 
@@ -277,7 +286,7 @@ export default function Accounts() {
         userId, placeId: null, jobId: null, accessCode: null,
         useBootstrapper: localStorage.getItem("reiya_use_bootstrapper") === "true",
       });
-    } catch (e) { alert(`Launch failed: ${e}`); }
+    } catch (e) { toast.error(`Launch failed: ${e}`); }
     finally { setLaunching(null); }
   };
 
@@ -288,7 +297,7 @@ export default function Accounts() {
         userId, placeId, jobId: null, accessCode: null,
         useBootstrapper: localStorage.getItem("reiya_use_bootstrapper") === "true",
       });
-    } catch (e) { alert(`Launch failed: ${e}`); }
+    } catch (e) { toast.error(`Launch failed: ${e}`); }
     finally { setLaunching(null); }
   };
 
@@ -324,7 +333,7 @@ export default function Accounts() {
         jobId: null, accessCode: null,
         useBootstrapper: localStorage.getItem("reiya_use_bootstrapper") === "true",
       });
-    } catch (e) { alert(`Launch failed: ${e}`); }
+    } catch (e) { toast.error(`Launch failed: ${e}`); }
     finally { setLaunching(null); }
   };
 
@@ -403,7 +412,7 @@ export default function Accounts() {
       setBulkResults(results);
       await loadAccounts();
     } catch (e) {
-      alert(String(e));
+      toast.error(String(e));
     } finally {
       setBulkAdding(false);
     }
@@ -432,7 +441,7 @@ export default function Accounts() {
           });
         } catch (e) {
           if (unlisten) unlisten();
-          alert(`Failed to open login window: ${String(e)}`);
+          toast.error(`Failed to open login window: ${String(e)}`);
           resolve(null);
         }
       });
@@ -451,10 +460,10 @@ export default function Accounts() {
         });
       } else {
         const reason = res?.error || "Login window was closed or cookie extraction failed.";
-        alert(`Manual login not saved:\n\n${reason}\n\nIf you solved a CAPTCHA or 2FA, please make sure you completed the verification successfully.`);
+        toast.warning(`Login not saved: ${reason}`);
       }
     } catch (e) {
-      alert(`Manual login failed: ${String(e)}`);
+      toast.error(`Manual login failed: ${String(e)}`);
     } finally {
       setLoginLoading(false);
     }
@@ -516,10 +525,11 @@ export default function Accounts() {
     setLoginLoading(false); setShowUserPass(false); setComboText("");
     await loadAccounts();
 
-    let msg = `Done! Imported ${successCount}/${total} account(s).`;
-    if (succeededAccounts.length > 0) msg += `\n\n✓ Success:\n${succeededAccounts.map(u => `  • ${u}`).join("\n")}`;
-    if (failedAccounts.length > 0) msg += `\n\n✗ Failed (${failedAccounts.length}):\n${failedAccounts.map(f => `  • ${f}`).join("\n")}`;
-    alert(msg);
+    if (failedAccounts.length === 0) {
+      toast.success(`Imported ${successCount}/${total} accounts successfully.`);
+    } else {
+      toast.warning(`Imported ${successCount}/${total} accounts. ${failedAccounts.length} failed: ${failedAccounts.slice(0, 3).join(", ")}${failedAccounts.length > 3 ? "..." : ""}`);
+    }
   };
 
   const handleSetDisplayName = async () => {
@@ -628,16 +638,24 @@ export default function Accounts() {
     setTimeout(() => setBulkStatus(""), 3000);
   };
 
+  const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
   const handleBulkDelete = async () => {
     const targets = accounts.filter(a => selected.has(a.user_id));
     if (targets.length === 0) return;
-    if (!confirm(`Remove ${targets.length} selected account(s)?`)) return;
+    if (!deleteConfirmPending) {
+      setDeleteConfirmPending(true);
+      toast.warning(`Click Delete again to confirm removing ${targets.length} account(s).`);
+      setTimeout(() => setDeleteConfirmPending(false), 4000);
+      return;
+    }
+    setDeleteConfirmPending(false);
     for (const acc of targets) {
       try { await invoke("remove_account", { userId: acc.user_id }); } catch { }
     }
     setAccounts(prev => prev.filter(a => !selected.has(a.user_id)));
     setSelected(new Set());
     setBulkStatus("");
+    toast.success(`Removed ${targets.length} account(s).`);
   };
 
   const handleBulkMoveGroup = async () => {

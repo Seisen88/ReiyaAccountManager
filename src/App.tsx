@@ -110,6 +110,7 @@ function AppInner() {
       }
       if (settings?.AppLockEnabled) setLocked(true);
       if (settings?.AppLockOnMinimize) setLockOnMinimize(true);
+      localStorage.setItem("reiya_use_bootstrapper", settings?.UseBootstrapperLaunch !== false ? "true" : "false");
       invoke("start_discord_rpc").catch(() => {});
     });
   }, []);
@@ -163,13 +164,28 @@ function AppInner() {
 
 import { LanguageProvider } from "./context/LanguageContext";
 import { ThemeProvider, useTheme, THEMES, applyTheme } from "./context/ThemeContext";
+import { ToastProvider } from "./components/Toast";
 
 export default function App() {
+  // The launch_progress window loads index.html with pathname replaced via initialization_script.
+  // Render it immediately — no license check, no settings load, no delay.
+  if (window.location.pathname === "/launch-progress") {
+    return (
+      <LanguageProvider>
+        <ThemeProvider>
+          <LaunchProgress />
+        </ThemeProvider>
+      </LanguageProvider>
+    );
+  }
+
   return (
     <UpdateProvider>
       <LanguageProvider>
         <ThemeProvider>
-          <AppInner />
+          <ToastProvider>
+            <AppInner />
+          </ToastProvider>
         </ThemeProvider>
       </LanguageProvider>
     </UpdateProvider>

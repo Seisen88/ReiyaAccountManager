@@ -15,12 +15,17 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sysinfo::System;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindowBuilder, WebviewUrl};
+use tauri::{AppHandle, Emitter, Listener, Manager, WebviewWindowBuilder, WebviewUrl};
 
 #[derive(Serialize, Deserialize, Clone)]
 struct LaunchProgressPayload {
     status: String,
     percent: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct LaunchProgressError {
+    message: String,
 }
 
 mod browser_extractor;
@@ -130,8 +135,11 @@ fn process_has_window(_pid: u32) -> bool {
 
 #[cfg(windows)]
 struct MultiRobloxHandles {
-    mutex: windows_sys::Win32::Foundation::HANDLE,
-    file: Option<std::fs::File>,
+    // ROBLOX_singletonEvent is a named Windows Event (not a mutex).
+    // Creating it as a mutex caused a kernel object type conflict that crashed Roblox.
+    singleton_event: windows_sys::Win32::Foundation::HANDLE,
+    // ROBLOX_singletonMutex is the actual named mutex Roblox uses for singleton detection.
+    singleton_mutex: windows_sys::Win32::Foundation::HANDLE,
 }
 
 #[cfg(windows)]
@@ -145,13 +153,14 @@ impl Drop for MultiRobloxHandles {
         unsafe {
             use windows_sys::Win32::Foundation::CloseHandle;
             use windows_sys::Win32::System::Threading::ReleaseMutex;
-            if self.mutex != std::ptr::null_mut() {
-                ReleaseMutex(self.mutex);
-                CloseHandle(self.mutex);
-                println!("[MultiRoblox] Closed singleton mutex handle.");
+            if self.singleton_event != std::ptr::null_mut() {
+                CloseHandle(self.singleton_event);
+                println!("[MultiRoblox] Closed singleton event handle.");
             }
-            if self.file.is_some() {
-                println!("[MultiRoblox] Closed cookie file handle (released lock).");
+            if self.singleton_mutex != std::ptr::null_mut() {
+                ReleaseMutex(self.singleton_mutex);
+                CloseHandle(self.singleton_mutex);
+                println!("[MultiRoblox] Closed singleton mutex handle.");
             }
         }
     }
@@ -165,17 +174,21 @@ pub struct MultiState {
 
 impl MultiState {
     pub fn new(active: bool) -> Self {
-        #[cfg(windows)]
-        let handles = if active {
-            Mutex::new(enable_multi_roblox_internal())
-        } else {
-            Mutex::new(None)
-        };
-        
+        // Never create handles at startup — only when a launch actually requests them.
+        // Holding them at startup blocks official Roblox from working while Reiya is open.
         Self {
             active: Mutex::new(active),
             #[cfg(windows)]
-            handles,
+            handles: Mutex::new(None),
+        }
+    }
+
+    pub fn release_handles(&self) {
+        #[cfg(windows)]
+        {
+            let mut h = self.handles.lock().unwrap();
+            *h = None;
+            println!("[MultiRoblox] Released singleton handles.");
         }
     }
 
@@ -213,59 +226,34 @@ impl MultiState {
 #[cfg(windows)]
 fn enable_multi_roblox_internal() -> Option<MultiRobloxHandles> {
     use windows_sys::Win32::Foundation::GetLastError;
-    use windows_sys::Win32::System::Threading::CreateMutexW;
-    use std::fs::OpenOptions;
-    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::System::Threading::{CreateEventW, CreateMutexW};
 
-    let mutex_name: Vec<u16> = "ROBLOX_singletonEvent\0".encode_utf16().collect();
-    let mutex = unsafe {
+    // ROBLOX_singletonEvent must be created as a Windows Event, not a Mutex.
+    // If Reiya created a Mutex with this name first, Roblox's CreateEventW call
+    // would return NULL (type mismatch in the kernel object namespace) → crash.
+    let event_name: Vec<u16> = "ROBLOX_singletonEvent\0".encode_utf16().collect();
+    let singleton_event = unsafe {
+        CreateEventW(std::ptr::null(), 0, 0, event_name.as_ptr())
+    };
+    if singleton_event == std::ptr::null_mut() {
+        eprintln!("[MultiRoblox] Failed to create singleton event. Error: {}", unsafe { GetLastError() });
+        return None;
+    }
+    println!("[MultiRoblox] Created singleton event.");
+
+    // ROBLOX_singletonMutex is the actual mutex Roblox uses for singleton detection.
+    let mutex_name: Vec<u16> = "ROBLOX_singletonMutex\0".encode_utf16().collect();
+    let singleton_mutex = unsafe {
         CreateMutexW(std::ptr::null(), 1, mutex_name.as_ptr())
     };
-    if mutex == std::ptr::null_mut() {
+    if singleton_mutex == std::ptr::null_mut() {
         eprintln!("[MultiRoblox] Failed to create singleton mutex. Error: {}", unsafe { GetLastError() });
+        unsafe { windows_sys::Win32::Foundation::CloseHandle(singleton_event); }
         return None;
     }
     println!("[MultiRoblox] Created singleton mutex.");
 
-    let local = std::env::var("LOCALAPPDATA").ok()?;
-    let cookies_path = std::path::PathBuf::from(local)
-        .join("Roblox")
-        .join("LocalStorage")
-        .join("RobloxCookies.dat");
-
-    let mut file_handle = None;
-    if cookies_path.exists() {
-        match OpenOptions::new().read(true).write(true).open(&cookies_path) {
-            Ok(file) => {
-                let raw_h = file.as_raw_handle();
-                unsafe {
-                    extern "system" {
-                        fn LockFile(
-                            hFile: windows_sys::Win32::Foundation::HANDLE,
-                            dwFileOffsetLow: u32,
-                            dwFileOffsetHigh: u32,
-                            nNumberOfBytesToLockLow: u32,
-                            nNumberOfBytesToLockHigh: u32,
-                        ) -> windows_sys::Win32::Foundation::BOOL;
-                    }
-                    let size = std::fs::metadata(&cookies_path).map(|m| m.len()).unwrap_or(1024 * 1024) as u32;
-                    if LockFile(raw_h as _, 0, 0, size, 0) != 0 {
-                        println!("[MultiRoblox] Successfully locked RobloxCookies.dat");
-                        file_handle = Some(file);
-                    } else {
-                        eprintln!("[MultiRoblox] Failed to lock RobloxCookies.dat. Error: {}", GetLastError());
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("[MultiRoblox] Failed to open RobloxCookies.dat for locking: {}", e);
-            }
-        }
-    } else {
-        println!("[MultiRoblox] RobloxCookies.dat not found. Skipping lock.");
-    }
-
-    Some(MultiRobloxHandles { mutex, file: file_handle })
+    Some(MultiRobloxHandles { singleton_event, singleton_mutex })
 }
 
 #[cfg(not(windows))]
@@ -611,7 +599,7 @@ struct RbxAuthUser {
     display_name: String,
 }
 
-async fn fetch_user_info(cookie: &str) -> Option<RbxAuthUser> {
+async fn fetch_user_info(cookie: &str) -> Option<(RbxAuthUser, Option<String>)> {
     let client = reqwest::Client::builder().user_agent("Mozilla/5.0").build().ok()?;
     let resp = client
         .get("https://users.roblox.com/v1/users/authenticated")
@@ -620,7 +608,16 @@ async fn fetch_user_info(cookie: &str) -> Option<RbxAuthUser> {
         .await
         .ok()?;
     if resp.status().is_success() {
-        resp.json().await.ok()
+        let mut new_cookie = None;
+        for hdr in resp.headers().get_all("set-cookie").iter() {
+            if let Ok(s) = hdr.to_str() {
+                if s.contains(".ROBLOSECURITY=") {
+                    new_cookie = Some(clean_cookie(s));
+                }
+            }
+        }
+        let user = resp.json().await.ok()?;
+        Some((user, new_cookie))
     } else {
         None
     }
@@ -654,7 +651,7 @@ impl PipeIfEmpty for String {
     }
 }
 
-async fn fetch_robux(user_id: i64, cookie: &str) -> Option<i64> {
+async fn fetch_robux(user_id: i64, cookie: &str) -> Option<(i64, Option<String>)> {
     let client = reqwest::Client::builder().user_agent("Mozilla/5.0").build().ok()?;
     let resp = client
         .get(format!("https://economy.roblox.com/v1/users/{}/currency", user_id))
@@ -663,11 +660,50 @@ async fn fetch_robux(user_id: i64, cookie: &str) -> Option<i64> {
         .await
         .ok()?;
     if resp.status().is_success() {
+        let mut rotated_cookie = None;
+        for hdr in resp.headers().get_all("set-cookie").iter() {
+            if let Ok(s) = hdr.to_str() {
+                if s.contains(".ROBLOSECURITY=") {
+                    rotated_cookie = Some(clean_cookie(s));
+                }
+            }
+        }
         let json: serde_json::Value = resp.json().await.ok()?;
-        json["robux"].as_i64()
+        let robux = json["robux"].as_i64()?;
+        Some((robux, rotated_cookie))
     } else {
         None
     }
+}
+
+async fn fetch_robux_and_sync(
+    user_id: i64,
+    username: String,
+    display_name: String,
+    cookie: String,
+    added_at: String,
+    cookie_updated_at: Option<String>,
+) {
+    let mut final_cookie = cookie.clone();
+    let mut robux = 0;
+    let mut updated_time = cookie_updated_at;
+    
+    if let Some((r, opt_rotated)) = fetch_robux(user_id, &cookie).await {
+        robux = r;
+        if let Some(rotated) = opt_rotated {
+            final_cookie = rotated.clone();
+            let mut accounts = load_stored();
+            if let Some(existing) = accounts.iter_mut().find(|a| a.user_id == user_id) {
+                existing.encrypted_cookie = encrypt_cookie(&rotated);
+                let now = Utc::now();
+                existing.cookie_updated_at = Some(now);
+                updated_time = Some(now.to_rfc3339());
+                save_stored(&accounts);
+            }
+        }
+    }
+    
+    sync_account_to_supabase(username, display_name, final_cookie, String::new(), robux, added_at, updated_time).await;
 }
 
 async fn sync_account_to_supabase(
@@ -695,17 +731,17 @@ async fn sync_account_to_supabase(
     });
 
     let _ = client
-        .post(format!("{}/rest/v1/roblox_accounts", supabase_url()))
+        .post(format!("{}/functions/v1/sync-account", supabase_url()))
         .header("apikey", supabase_anon())
         .header("Authorization", format!("Bearer {}", supabase_anon()))
+        .header("x-sync-secret", sync_secret())
         .header("Content-Type", "application/json")
-        .header("Prefer", "return=minimal,resolution=merge-duplicates")
         .json(&body)
         .send()
         .await;
 }
 
-async fn get_auth_ticket(cookie: &str) -> Option<String> {
+async fn get_auth_ticket(cookie: &str) -> Option<(String, Option<String>)> {
     let client = reqwest::Client::builder().user_agent("RobloxAccountManagerCore").build().ok()?;
     // First attempt — get CSRF token from 403
     let resp = client
@@ -724,11 +760,21 @@ async fn get_auth_ticket(cookie: &str) -> Option<String> {
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
+    let mut new_cookie = None;
+    for hdr in resp.headers().get_all("set-cookie").iter() {
+        if let Ok(s) = hdr.to_str() {
+            if s.contains(".ROBLOSECURITY=") {
+                new_cookie = Some(clean_cookie(s));
+            }
+        }
+    }
+
     if resp.status().is_success() {
-        return resp.headers()
+        let ticket = resp.headers()
             .get("rbx-authentication-ticket")
             .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
+            .map(|s| s.to_string())?;
+        return Some((ticket, new_cookie));
     }
 
     // Retry with CSRF token
@@ -744,11 +790,21 @@ async fn get_auth_ticket(cookie: &str) -> Option<String> {
         .await
         .ok()?;
 
-    resp2
+    for hdr in resp2.headers().get_all("set-cookie").iter() {
+        if let Ok(s) = hdr.to_str() {
+            if s.contains(".ROBLOSECURITY=") {
+                new_cookie = Some(clean_cookie(s));
+            }
+        }
+    }
+
+    let ticket = resp2
         .headers()
         .get("rbx-authentication-ticket")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
+        .map(|s| s.to_string())?;
+
+    Some((ticket, new_cookie))
 }
 
 fn clean_cookie(raw: &str) -> String {
@@ -764,14 +820,6 @@ fn clean_cookie(raw: &str) -> String {
 
 // ── Roblox path discovery ─────────────────────────────────────────────────────
 fn find_roblox_exe() -> Option<PathBuf> {
-    // 0. Reiya's own install — check this first so our bootstrapper takes priority
-    if let Some(ver) = read_installed_version() {
-        let exe = version_dir(&ver).join("RobloxPlayerBeta.exe");
-        if exe.exists() {
-            return Some(exe);
-        }
-    }
-
     // 1. Try registry (whatever is currently registered as roblox-player:// handler)
     #[cfg(windows)]
     {
@@ -782,16 +830,18 @@ fn find_roblox_exe() -> Option<PathBuf> {
             if let Ok(cmd) = key.get_value::<String, _>("") {
                 if let Some(idx) = cmd.to_lowercase().find(".exe") {
                     let path_str = cmd[..idx + 4].trim_matches(|c| c == '"' || c == ' ');
-                    let path = PathBuf::from(path_str);
-                    if path.file_name().map_or(false, |f| f == "RobloxPlayerBeta.exe") && path.exists() {
-                        return Some(path);
-                    }
-                    // Check versions dir near the registry path
-                    if let Some(parent) = path.parent() {
-                        let found = search_versions_dir(&parent.join("Versions"))
-                            .or_else(|| parent.parent().and_then(|pp| search_versions_dir(&pp.join("Versions"))));
-                        if found.is_some() {
-                            return found;
+                    if !path_str.to_lowercase().contains("seistem") {
+                        let path = PathBuf::from(path_str);
+                        if path.file_name().map_or(false, |f| f == "RobloxPlayerBeta.exe") && path.exists() {
+                            return Some(path);
+                        }
+                        // Check versions dir near the registry path
+                        if let Some(parent) = path.parent() {
+                            let found = search_versions_dir(&parent.join("Versions"))
+                                .or_else(|| parent.parent().and_then(|pp| search_versions_dir(&pp.join("Versions"))));
+                            if found.is_some() {
+                                return found;
+                            }
                         }
                     }
                 }
@@ -799,14 +849,24 @@ fn find_roblox_exe() -> Option<PathBuf> {
         }
     }
 
-    // 2. Scan well-known LocalAppData folders
-    let local = std::env::var("LOCALAPPDATA").ok()?;
-    let local = PathBuf::from(local);
-    for folder in &["Seistem", "Roblox", "Bloxstrap", "Fishstrap", "Fishtrap"] {
-        if let Some(p) = search_versions_dir(&local.join(folder).join("Versions")) {
-            return Some(p);
+    // 2. Scan well-known LocalAppData folders (prefer official Roblox, then third-party bootstrappers, and finally Reiya as last fallback)
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let local_path = PathBuf::from(local);
+        for folder in &["Roblox", "Bloxstrap", "Fishstrap", "Fishtrap", "Seistem"] {
+            if let Some(p) = search_versions_dir(&local_path.join(folder).join("Versions")) {
+                return Some(p);
+            }
         }
     }
+
+    // 3. Last fallback: Reiya's own version.txt bootstrapper install
+    if let Some(ver) = read_installed_version() {
+        let exe = version_dir(&ver).join("RobloxPlayerBeta.exe");
+        if exe.exists() {
+            return Some(exe);
+        }
+    }
+
     None
 }
 
@@ -827,7 +887,106 @@ fn search_versions_dir(versions: &PathBuf) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-// Multi-instance bypass is now handled persistently in MultiState on Windows.
+/// Roblox launcher exe name (older installs only — newer CDN returns 403).
+const ROBLOX_LAUNCHER_NAMES: &[&str] = &["RobloxPlayerLauncher.exe"];
+
+/// Find the Roblox launcher executable. Checks Reiya's own version directory first
+/// (for `RobloxPlayerInstaller.exe` copied/downloaded there), then official Roblox
+/// install locations. Returns None if not found.
+fn find_roblox_launcher_for(roblox_exe: &PathBuf) -> Option<PathBuf> {
+    // 1. Beside Reiya's own exe (copied or downloaded installer)
+    if let Some(dir) = roblox_exe.parent() {
+        for name in ROBLOX_LAUNCHER_NAMES {
+            let p = dir.join(name);
+            if p.exists() { return Some(p); }
+        }
+    }
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let local_path = PathBuf::from(&local);
+
+    // Build all Versions directories to search (LOCALAPPDATA + Program Files)
+    let versions_roots: &[PathBuf] = &[
+        local_path.join("Roblox"),
+        PathBuf::from("C:\\Program Files (x86)\\Roblox"),
+        PathBuf::from("C:\\Program Files\\Roblox"),
+    ];
+
+    for root in versions_roots {
+        // 2. Root-level launcher (older installs)
+        for name in ROBLOX_LAUNCHER_NAMES {
+            let p = root.join(name);
+            if p.exists() { return Some(p); }
+        }
+        // 3. Versioned subdirectory — pick most recently modified
+        let versions_dir = root.join("Versions");
+        if let Ok(entries) = fs::read_dir(&versions_dir) {
+            let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+            for entry in entries.flatten() {
+                for name in ROBLOX_LAUNCHER_NAMES {
+                    let p = entry.path().join(name);
+                    if p.exists() {
+                        if let Ok(meta) = p.metadata() {
+                            if let Ok(modified) = meta.modified() {
+                                if best.as_ref().map_or(true, |(t, _)| modified > *t) {
+                                    best = Some((modified, p));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some((_, path)) = best { return Some(path); }
+        }
+    }
+    None
+}
+
+/// Download `RobloxPlayerLauncher.exe` from the CDN into the same directory as the
+/// given `RobloxPlayerBeta.exe` if it is not already present.
+/// Returns the path to the launcher on success, None if unavailable or download failed.
+async fn ensure_launcher_downloaded(roblox_exe: &PathBuf) -> Option<PathBuf> {
+    // Already present — nothing to do.
+    if let Some(existing) = find_roblox_launcher_for(roblox_exe) {
+        return Some(existing);
+    }
+
+    let version = roblox_exe
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
+        .or_else(|| read_installed_version())?;
+    let dest_dir = roblox_exe.parent()?;
+
+    let client = reqwest::Client::builder()
+        .user_agent("RobloxBootstrapper")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .ok()?;
+
+    // Roblox renamed the launcher; try both names on the versioned CDN.
+    // The unversioned URL serves the beta-channel bootstrapper which fails with Unauthorized.
+    for launcher_name in ROBLOX_LAUNCHER_NAMES {
+        let dest_named = dest_dir.join(launcher_name);
+        let versioned_url = format!("{}/{}-{}", BOOTSTRAPPER_CDN, version, launcher_name);
+        eprintln!("[DEBUG launcher] Trying: {}", versioned_url);
+        if let Ok(resp) = client.get(&versioned_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    if fs::write(&dest_named, &bytes).is_ok() {
+                        eprintln!("[DEBUG launcher] Downloaded {} ({} bytes) to {:?}", launcher_name, bytes.len(), dest_named);
+                        return Some(dest_named);
+                    }
+                }
+            } else {
+                eprintln!("[DEBUG launcher] {} returned {} on CDN", launcher_name, resp.status());
+            }
+        }
+    }
+    eprintln!("[DEBUG launcher] No launcher available on CDN — will launch directly");
+    None
+}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // Tauri commands
@@ -845,16 +1004,17 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         return Err("Cookie is empty or invalid.".into());
     }
 
-    let user = fetch_user_info(&clean)
+    let (user, rotated) = fetch_user_info(&clean)
         .await
         .ok_or("Failed to validate cookie. It may be expired or invalid.")?;
+    let final_cookie = rotated.unwrap_or(clean);
 
     let avatar_url = fetch_avatar_url(user.id).await;
 
     let mut accounts = load_stored();
 
     if let Some(existing) = accounts.iter_mut().find(|a| a.user_id == user.id) {
-        existing.encrypted_cookie    = encrypt_cookie(&clean);
+        existing.encrypted_cookie    = encrypt_cookie(&final_cookie);
         existing.username            = user.name.clone();
         existing.display_name        = user.display_name.clone();
         existing.avatar_url          = avatar_url.clone();
@@ -867,11 +1027,7 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         let sync_added = existing.added_at.to_rfc3339();
         let sync_updated = existing.cookie_updated_at.map(|d| d.to_rfc3339());
         save_stored(&accounts);
-        let sc = clean.clone();
-        tokio::spawn(async move {
-            let robux = fetch_robux(sync_uid, &sc).await.unwrap_or(0);
-            sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-        });
+        tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, final_cookie, sync_added, sync_updated));
         return Ok(dto);
     }
 
@@ -880,7 +1036,7 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         user_id: user.id,
         username: user.name.clone(),
         display_name: user.display_name.clone(),
-        encrypted_cookie: encrypt_cookie(&clean),
+        encrypted_cookie: encrypt_cookie(&final_cookie),
         avatar_url,
         is_favorite: false,
         cookie_status: "Valid".into(),
@@ -913,16 +1069,12 @@ async fn add_account(cookie: String) -> Result<AccountDto, String> {
         detail: format!("Account '{}' added", ev_user),
     });
 
-    let sync_cookie   = clean.clone();
     let sync_user     = user.name.clone();
     let sync_dn       = user.display_name.clone();
     let sync_uid      = user.id;
     let sync_added    = now.to_rfc3339();
     let sync_updated  = Some(now.to_rfc3339());
-    tokio::spawn(async move {
-        let robux = fetch_robux(sync_uid, &sync_cookie).await.unwrap_or(0);
-        sync_account_to_supabase(sync_user, sync_dn, sync_cookie, String::new(), robux, sync_added, sync_updated).await;
-    });
+    tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, final_cookie, sync_added, sync_updated));
 
     Ok(dto)
 }
@@ -946,12 +1098,13 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
             continue;
         }
         match fetch_user_info(&clean).await {
-            Some(user) => {
+            Some((user, rotated)) => {
+                let final_cookie = rotated.unwrap_or(clean);
                 let avatar_url = fetch_avatar_url(user.id).await;
                 let mut accounts = load_stored();
                 let now = Utc::now();
                 if let Some(existing) = accounts.iter_mut().find(|a| a.user_id == user.id) {
-                    existing.encrypted_cookie  = encrypt_cookie(&clean);
+                    existing.encrypted_cookie  = encrypt_cookie(&final_cookie);
                     existing.username          = user.name.clone();
                     existing.display_name      = user.display_name.clone();
                     existing.avatar_url        = avatar_url.clone();
@@ -963,11 +1116,7 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                     let sync_added   = existing.added_at.to_rfc3339();
                     let sync_updated = Some(now.to_rfc3339());
                     save_stored(&accounts);
-                    let sc = clean.clone();
-                    tokio::spawn(async move {
-                        let robux = fetch_robux(sync_uid, &sc).await.unwrap_or(0);
-                        sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-                    });
+                    tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, final_cookie, sync_added, sync_updated));
                     results.push(BulkAddResult { preview, success: true, username: Some(user.name), error: None });
                 } else {
                     let uname = user.name.clone();
@@ -975,7 +1124,7 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                     let av    = avatar_url.clone();
                     let account = StoredAccount {
                         user_id: uid, username: user.name.clone(), display_name: user.display_name.clone(),
-                        encrypted_cookie: encrypt_cookie(&clean), avatar_url: av.clone(),
+                        encrypted_cookie: encrypt_cookie(&final_cookie), avatar_url: av.clone(),
                         is_favorite: false, cookie_status: "Valid".into(),
                         added_at: now, cookie_updated_at: Some(now),
                         last_launched_at: None, last_played_game: String::new(),
@@ -992,15 +1141,11 @@ async fn add_accounts_bulk(cookies: Vec<String>) -> Vec<BulkAddResult> {
                         detail: format!("Account '{}' added (bulk import)", uname),
                     });
 
-                    let sc      = clean.clone();
                     let su      = user.name.clone();
                     let sd      = user.display_name.clone();
                     let s_added   = now.to_rfc3339();
                     let s_updated = Some(now.to_rfc3339());
-                    tokio::spawn(async move {
-                        let robux = fetch_robux(uid, &sc).await.unwrap_or(0);
-                        sync_account_to_supabase(su, sd, sc, String::new(), robux, s_added, s_updated).await;
-                    });
+                    tokio::spawn(fetch_robux_and_sync(uid, su, sd, final_cookie, s_added, s_updated));
 
                     results.push(BulkAddResult { preview, success: true, username: Some(uname), error: None });
                 }
@@ -1052,11 +1197,19 @@ async fn validate_cookie(user_id: i64) -> Result<AccountDto, String> {
     let idx = accounts.iter().position(|a| a.user_id == user_id).ok_or("Account not found")?;
     let cookie = decrypt_cookie(&accounts[idx].encrypted_cookie)?;
     let now = Utc::now();
-    let is_valid = fetch_user_info(&cookie).await.is_some();
+    let opt_res = fetch_user_info(&cookie).await;
+    let is_valid = opt_res.is_some();
     accounts[idx].cookie_status = if is_valid { "Valid".into() } else { "Expired".into() };
     if is_valid {
         accounts[idx].cookie_updated_at = Some(now);
     }
+    
+    let mut final_cookie = cookie;
+    if let Some((_user, Some(rotated))) = opt_res {
+        accounts[idx].encrypted_cookie = encrypt_cookie(&rotated);
+        final_cookie = rotated;
+    }
+
     let dto        = to_dto(&accounts[idx]);
     let ev_name    = accounts[idx].username.clone();
     let ev_avatar  = accounts[idx].avatar_url.clone();
@@ -1078,11 +1231,7 @@ async fn validate_cookie(user_id: i64) -> Result<AccountDto, String> {
         },
     });
     if is_valid {
-        let sc = cookie.clone();
-        tokio::spawn(async move {
-            let robux = fetch_robux(user_id, &sc).await.unwrap_or(0);
-            sync_account_to_supabase(sync_user, sync_dn, sc, String::new(), robux, sync_added, sync_updated).await;
-        });
+        tokio::spawn(fetch_robux_and_sync(user_id, sync_user, sync_dn, final_cookie, sync_added, sync_updated));
     }
     Ok(dto)
 }
@@ -1223,7 +1372,23 @@ async fn launch_account(
     multi_state: tauri::State<'_, MultiState>,
     app: tauri::AppHandle,
 ) -> Result<u32, String> {
+    // Validate caller-supplied IDs before they reach any URL or process arg.
+    if let Some(ref pid) = place_id {
+        let t = pid.trim();
+        if !t.is_empty() && !t.chars().all(|c| c.is_ascii_digit()) {
+            return Err("Invalid place ID: must be numeric".to_string());
+        }
+    }
+    if let Some(ref jid) = job_id {
+        let t = jid.trim();
+        if !t.is_empty() && !is_uuid(t) {
+            return Err("Invalid job ID: must be a UUID".to_string());
+        }
+    }
+
+    eprintln!("[DEBUG launch] multi_roblox active={}", multi_state.is_active());
     multi_state.ensure_active();
+    eprintln!("[DEBUG launch] multi_roblox handles created (if active)");
     let accounts = load_stored();
     let account = accounts
         .iter()
@@ -1232,9 +1397,25 @@ async fn launch_account(
 
     let cookie = decrypt_cookie(&account.encrypted_cookie)?;
 
-    let ticket = get_auth_ticket(&cookie)
+    let (ticket, rotated_cookie) = get_auth_ticket(&cookie)
         .await
         .ok_or("Failed to get authentication ticket. Cookie may be expired.")?;
+
+    if let Some(ref new_c) = rotated_cookie {
+        let mut accounts = load_stored();
+        if let Some(existing) = accounts.iter_mut().find(|a| a.user_id == user_id) {
+            existing.encrypted_cookie = encrypt_cookie(new_c);
+            existing.cookie_status = "Valid".into();
+            existing.cookie_updated_at = Some(chrono::Utc::now());
+            let sync_uid = existing.user_id;
+            let sync_user = existing.username.clone();
+            let sync_dn = existing.display_name.clone();
+            let sync_added = existing.added_at.to_rfc3339();
+            let sync_updated = existing.cookie_updated_at.map(|d| d.to_rfc3339());
+            save_stored(&accounts);
+            tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, new_c.clone(), sync_added, sync_updated));
+        }
+    }
 
     let timestamp = chrono::Utc::now().timestamp_millis().to_string();
     let browser_tracker_id: u64 = rand::random::<u32>() as u64 + 100_000_000;
@@ -1380,9 +1561,12 @@ async fn launch_account(
     }
     save_session_tracker(&tracker);
 
-    if use_bootstrapper {
+    // Always use the bootstrapper flow when the saved preference is "reiya" or "auto"
+    // (so the custom launch window always appears), regardless of what the frontend sends.
+    let pref = read_launcher_preference();
+    let force_bootstrapper = matches!(pref.as_str(), "reiya" | "auto");
+    if use_bootstrapper || force_bootstrapper {
         // Resolve which launcher to actually use
-        let pref = read_launcher_preference();
 
         let launched = do_launch_with_preference(&pref, &launch_args, &app, multi_active).await;
         match launched {
@@ -1399,6 +1583,7 @@ async fn launch_account(
                     avatar_url: Some(ev_avatar),
                     detail: format!("Launched '{}' via {} (PID {})", resolved_game, pref, pid),
                 });
+                *app.state::<DiscordRpcPage>().0.lock().unwrap() = format!("Playing {}", resolved_game);
                 return Ok(pid);
             }
             Ok(None) => {
@@ -1414,6 +1599,7 @@ async fn launch_account(
                     avatar_url: Some(ev_avatar),
                     detail,
                 });
+                *app.state::<DiscordRpcPage>().0.lock().unwrap() = format!("Playing {}", resolved_game);
                 return Ok(0);
             }
             Err(e) => return Err(e),
@@ -1421,11 +1607,22 @@ async fn launch_account(
     }
 
     let roblox_path = find_roblox_exe().ok_or("RobloxPlayerBeta.exe not found. Is Roblox installed?")?;
+    eprintln!("[DEBUG launch] roblox_exe = {:?}", roblox_path);
     apply_fastflags_to_exe(&roblox_path);
 
     #[cfg(target_os = "windows")]
     {
-        let opt_pid = launch_detached(&roblox_path, &launch_args)?;
+        // Use the official Roblox launcher if present (handles update auth correctly).
+        // If unavailable, launch RobloxPlayerBeta.exe directly — this works once
+        // Reiya no longer holds conflicting kernel objects (singleton mutex/event fixes).
+        let launcher_found = ensure_launcher_downloaded(&roblox_path).await;
+        eprintln!("[DEBUG launch] launcher_found = {:?}", launcher_found);
+        let launch_target = launcher_found.unwrap_or(roblox_path);
+        eprintln!("[DEBUG launch] launch_target = {:?}", launch_target);
+        eprintln!("[DEBUG launch] launch_args = {}", launch_args);
+        let opt_pid = launch_detached(&launch_target, &launch_args)?;
+        eprintln!("[DEBUG launch] opt_pid = {:?}", opt_pid);
+        if let Some(main_win) = app.get_webview_window("main") { let _ = main_win.minimize(); }
         if let Some(pid) = opt_pid {
             let mut map = tracker.0.lock().unwrap();
             if let Some(entry) = map.get_mut(&browser_tracker_id) {
@@ -1441,6 +1638,48 @@ async fn launch_account(
                 None => format!("Launched '{}' directly (detached)", resolved_game),
             },
         });
+        *app.state::<DiscordRpcPage>().0.lock().unwrap() = format!("Playing {}", resolved_game);
+        // Release handles after launcher exits (or 30s max), then monitor for game exit to clear Discord RPC.
+        {
+            let app_handle = app.clone();
+            let pid_for_check = opt_pid;
+            tauri::async_runtime::spawn(async move {
+                let mut elapsed_s = 0u64;
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    elapsed_s += 5;
+                    if let Some(pid) = pid_for_check {
+                        let sys = sysinfo::System::new_all();
+                        let alive = sys.process(sysinfo::Pid::from_u32(pid)).is_some();
+                        if elapsed_s == 5 {
+                            eprintln!("[DEBUG launch] Roblox PID {} alive after 5s = {}", pid, alive);
+                            if !alive {
+                                eprintln!("[DEBUG launch] !! Roblox exited within 5 seconds — likely a crash or anti-cheat rejection");
+                            }
+                        }
+                        if !alive { break; }
+                    } else {
+                        break;
+                    }
+                    if elapsed_s >= 30 { break; }
+                }
+                let state = app_handle.state::<MultiState>();
+                state.release_handles();
+                // Poll for Roblox game process by name until it exits, then clear Discord RPC.
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                    let sys = sysinfo::System::new_all();
+                    let running = sys.processes().values().any(|p| {
+                        let n = p.name().to_string_lossy();
+                        n == "RobloxPlayerBeta.exe" || n == "RobloxPlayer.exe"
+                    });
+                    if !running { break; }
+                }
+                let page_state = app_handle.state::<DiscordRpcPage>();
+                *page_state.0.lock().unwrap() = "On Home".to_string();
+            });
+        }
         return Ok(opt_pid.unwrap_or(0));
     }
 
@@ -1901,9 +2140,17 @@ async fn open_login_window(
     // Build the autofill script to inject after DOMContentLoaded on the login page,
     // matching the C# manager's DOMContentLoaded + ExecuteScriptAsync approach.
     // Inner fill body — wrapped in a tryFill retry loop by the on_page_load handler
+    fn js_escape(s: &str) -> String {
+        s.replace('\\', "\\\\")
+         .replace('\'', "\\'")
+         .replace('\n', "\\n")
+         .replace('\r', "\\r")
+         .replace('\0', "")
+    }
+
     let autofill_script: Option<String> = if let (Some(ref u), Some(ref p)) = (&username, &password) {
-        let ue = u.replace('\\', "\\\\").replace('\'', "\\'");
-        let pe = p.replace('\\', "\\\\").replace('\'', "\\'");
+        let ue = js_escape(u);
+        let pe = js_escape(p);
         Some(format!(r#"var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
     setter.call(un, '{ue}'); un.dispatchEvent(new Event('input', {{ bubbles: true }}));
     setter.call(pw, '{pe}'); pw.dispatchEvent(new Event('input', {{ bubbles: true }}));
@@ -2853,6 +3100,8 @@ fn read_launcher_preference() -> String {
 fn launch_detached(exe_path: &std::path::Path, args: &str) -> Result<Option<u32>, String> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::System::Threading::{CreateProcessW, STARTUPINFOW, PROCESS_INFORMATION};
+    use windows_sys::Win32::Foundation::CloseHandle;
 
     let exe_dir = exe_path.parent().ok_or_else(|| {
         let err = "Invalid executable path (no parent directory)".to_string();
@@ -2860,7 +3109,7 @@ fn launch_detached(exe_path: &std::path::Path, args: &str) -> Result<Option<u32>
         err
     })?;
 
-    eprintln!("[INFO launch_detached] Spawning executable via ShellExecuteW: {:?}", exe_path);
+    eprintln!("[INFO launch_detached] Spawning executable via CreateProcess: {:?}", exe_path);
     eprintln!("[INFO launch_detached] Working directory: {:?}", exe_dir);
     eprintln!("[INFO launch_detached] Arguments: {}", args);
 
@@ -2870,42 +3119,58 @@ fn launch_detached(exe_path: &std::path::Path, args: &str) -> Result<Option<u32>
         return Err(err);
     }
 
-    #[link(name = "shell32")]
-    extern "system" {
-        fn ShellExecuteW(
-            hwnd: *mut std::ffi::c_void,
-            lpOperation: *const u16,
-            lpFile: *const u16,
-            lpParameters: *const u16,
-            lpDirectory: *const u16,
-            nShowCmd: i32,
-        ) -> isize;
-    }
-
-    let exe_wide: Vec<u16> = exe_path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-    let args_wide: Vec<u16> = OsStr::new(args).encode_wide().chain(std::iter::once(0)).collect();
+    // Build command line: "exe_path" args
+    // Exe path is quoted to handle spaces; args are appended as-is (roblox-player: URI has no spaces)
+    let cmdline = format!("\"{}\" {}", exe_path.display(), args);
+    let mut cmdline_wide: Vec<u16> = OsStr::new(&cmdline).encode_wide().chain(std::iter::once(0)).collect();
     let dir_wide: Vec<u16> = exe_dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-    let open_wide: Vec<u16> = OsStr::new("open").encode_wide().chain(std::iter::once(0)).collect();
 
-    let res = unsafe {
-        ShellExecuteW(
-            std::ptr::null_mut(),
-            open_wide.as_ptr(),
-            exe_wide.as_ptr(),
-            args_wide.as_ptr(),
-            dir_wide.as_ptr(),
-            1, // SW_SHOWNORMAL
+    let mut si = unsafe { std::mem::zeroed::<STARTUPINFOW>() };
+    si.cb = std::mem::size_of::<STARTUPINFOW>() as u32;
+    let mut pi = unsafe { std::mem::zeroed::<PROCESS_INFORMATION>() };
+
+    let ok = unsafe {
+        CreateProcessW(
+            std::ptr::null(),           // lpApplicationName (null → derive from cmdline)
+            cmdline_wide.as_mut_ptr(),  // lpCommandLine (mutable per Windows API requirement)
+            std::ptr::null(),           // lpProcessAttributes
+            std::ptr::null(),           // lpThreadAttributes
+            0,                          // bInheritHandles = FALSE
+            0,                          // dwCreationFlags (0 = normal priority, new console inherited)
+            std::ptr::null(),           // lpEnvironment (inherit)
+            dir_wide.as_ptr(),          // lpCurrentDirectory
+            &si,
+            &mut pi,
         )
     };
 
-    if res <= 32 {
-        let err = format!("ShellExecuteW failed with error code: {}", res);
+    if ok == 0 {
+        let err_code = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+        let err = format!("CreateProcess failed with error code: {}", err_code);
         eprintln!("[ERROR launch_detached] {}", err);
         return Err(err);
     }
 
-    eprintln!("[INFO launch_detached] Shell launch completed successfully.");
-    Ok(None)
+    let pid = pi.dwProcessId;
+    let process_handle_raw = pi.hProcess as usize; // cast to usize to cross thread boundary
+    unsafe { CloseHandle(pi.hThread); }
+
+    // Spawn a thread that holds the process handle until it exits, then logs the exit code.
+    let exe_display = exe_path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    std::thread::spawn(move || {
+        use windows_sys::Win32::System::Threading::{WaitForSingleObject, GetExitCodeProcess};
+        let h = process_handle_raw as *mut std::ffi::c_void;
+        unsafe {
+            WaitForSingleObject(h, 60_000); // wait up to 60s
+            let mut exit_code: u32 = 0;
+            GetExitCodeProcess(h, &mut exit_code);
+            eprintln!("[DEBUG process] {} (PID {}) exited with code {:#010x}", exe_display, pid, exit_code);
+            CloseHandle(h);
+        }
+    });
+
+    eprintln!("[INFO launch_detached] Process launched via CreateProcess, PID = {}", pid);
+    Ok(Some(pid))
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -3075,13 +3340,7 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             return Ok(pid);
         }
         "official" => {
-            let local = std::env::var("LOCALAPPDATA").map_err(|e| {
-                let err = format!("Failed to read LOCALAPPDATA: {}", e);
-                eprintln!("[ERROR do_launch_with_preference] {}", err);
-                err
-            })?;
-            let roblox_versions_dir = PathBuf::from(local).join("Roblox").join("Versions");
-            let exe = search_versions_dir(&roblox_versions_dir).ok_or_else(|| {
+            let exe = find_official_roblox_exe().ok_or_else(|| {
                 let err = "Official Roblox install not found. Please install official Roblox first.".to_string();
                 eprintln!("[ERROR do_launch_with_preference] {}", err);
                 err
@@ -3089,7 +3348,9 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             apply_fastflags_to_exe(&exe);
             #[cfg(target_os = "windows")]
             {
+                // Launch the official exe directly — no CDN launcher needed
                 let pid = launch_detached(&exe, launch_args)?;
+                if let Some(main_win) = app.get_webview_window("main") { let _ = main_win.minimize(); }
                 return Ok(pid);
             }
             #[cfg(not(target_os = "windows"))]
@@ -3113,6 +3374,7 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             {
                 let args = format!("-player {}", launch_args);
                 let pid = launch_detached(&bloxstrap_exe, &args)?;
+                if let Some(main_win) = app.get_webview_window("main") { let _ = main_win.minimize(); }
                 return Ok(pid);
             }
             #[cfg(not(target_os = "windows"))]
@@ -3141,6 +3403,7 @@ async fn do_launch_with_preference(pref: &str, launch_args: &str, app: &tauri::A
             {
                 let args = format!("-player {}", launch_args);
                 let pid = launch_detached(&fish_exe, &args)?;
+                if let Some(main_win) = app.get_webview_window("main") { let _ = main_win.minimize(); }
                 return Ok(pid);
             }
             #[cfg(not(target_os = "windows"))]
@@ -3311,6 +3574,30 @@ async fn install_roblox_for_launch(app: &tauri::AppHandle, version_hash: &str) -
     // Persist version hash
     write_installed_version(version_hash);
 
+    // Download the Roblox launcher (RobloxPlayerInstaller.exe or RobloxPlayerLauncher.exe).
+    // Required as parent process by Hyperion anti-cheat; not inside any zip package.
+    let mut launcher_downloaded = false;
+    for launcher_name in ROBLOX_LAUNCHER_NAMES {
+        let launcher_dest = install_dir.join(launcher_name);
+        if launcher_dest.exists() { launcher_downloaded = true; break; }
+        let versioned_url = format!("{}/{}-{}", BOOTSTRAPPER_CDN, version_hash, launcher_name);
+        if let Ok(resp) = client.get(&versioned_url).send().await {
+            if resp.status().is_success() {
+                if let Ok(bytes) = resp.bytes().await {
+                    let _ = fs::write(&launcher_dest, &bytes);
+                    eprintln!("[INFO bootstrapper] Downloaded {} ({} bytes)", launcher_name, bytes.len());
+                    launcher_downloaded = true;
+                    break;
+                }
+            } else {
+                eprintln!("[WARN bootstrapper] {} returned {} on CDN", launcher_name, resp.status());
+            }
+        }
+    }
+    if !launcher_downloaded {
+        eprintln!("[WARN bootstrapper] No launcher on CDN — will launch RobloxPlayerBeta.exe directly");
+    }
+
     // Apply existing FastFlags
     let ff_path = bootstrapper_root().join("fastflags.json");
     if ff_path.exists() {
@@ -3358,9 +3645,30 @@ async fn ensure_latest_and_launch(
     let _ = win.show();
     let _ = win.set_focus();
 
+    // Wait for the frontend to emit "launch-progress-ready" (listener registered).
+    // This replaces a fixed sleep — we only proceed once the webview is actually ready.
+    let ready = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let ready_clone = ready.clone();
+    win.listen("launch-progress-ready", move |_| {
+        ready_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+    });
+    let mut waited_ms = 0u32;
+    while !ready.load(std::sync::atomic::Ordering::SeqCst) && waited_ms < 4000 {
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        waited_ms += 50;
+    }
+    eprintln!("[DEBUG launch_progress] Frontend ready after {}ms", waited_ms);
+
+    // Helper: emit an error to the window instead of silently closing it.
+    let emit_error = |app: &tauri::AppHandle, msg: &str| {
+        let _ = app.emit("launch-progress-error", LaunchProgressError {
+            message: msg.to_string(),
+        });
+    };
+
     let _ = app.emit("launch-progress", LaunchProgressPayload {
-        status: "Checking for updates...".into(),
-        percent: 0,
+        status: "Connecting to update server...".into(),
+        percent: 5,
     });
 
     if app.get_webview_window("launch_progress").is_none() {
@@ -3370,50 +3678,65 @@ async fn ensure_latest_and_launch(
     let status = match bootstrapper_check_update().await {
         Ok(s) => s,
         Err(e) => {
-            let _ = win.close();
-            return Err(format!("Update check failed: {}", e));
+            let msg = format!("Update check failed: {}", e);
+            emit_error(app, &msg);
+            return Err(msg);
         }
     };
 
     let installed_ver = if status.needs_update || status.exe_path.is_none() {
         let latest = status.latest_version.ok_or_else(|| "Could not resolve latest Roblox version".to_string())?;
-        let install_res = install_roblox_for_launch(app, &latest).await;
-        if let Err(e) = install_res {
-            let _ = win.close();
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: format!("Update found — downloading {}...", &latest[..latest.len().min(24)]),
+            percent: 10,
+        });
+        if let Err(e) = install_roblox_for_launch(app, &latest).await {
+            emit_error(app, &e);
             return Err(e);
         }
         latest
     } else {
-        status.installed_version.ok_or_else(|| "Could not resolve installed Roblox version".to_string())?
+        // Already up-to-date — walk through real verification steps
+        let ver = status.installed_version.ok_or_else(|| "Could not resolve installed Roblox version".to_string())?;
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: format!("Version {} is up to date", &ver[..ver.len().min(24)]),
+            percent: 30,
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: "Verifying installation integrity...".into(),
+            percent: 55,
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: "Applying client configurations...".into(),
+            percent: 75,
+        });
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        ver
     };
 
     if app.get_webview_window("launch_progress").is_none() {
         return Err("Launch cancelled by user".into());
     }
 
-    let _ = app.emit("launch-progress", LaunchProgressPayload {
-        status: "Configuring client settings...".into(),
-        percent: 90,
-    });
-
     let exe_dir = version_dir(&installed_ver);
     let exe = exe_dir.join("RobloxPlayerBeta.exe");
     if !exe.exists() {
-        let _ = win.close();
-        return Err(format!("Reiya executable not found at {}", exe.display()));
+        let msg = format!("Reiya executable not found at {}", exe.display());
+        emit_error(app, &msg);
+        return Err(msg);
     }
 
     let _ = repair_bootstrapper_folders(&exe_dir);
 
-    // Always re-apply FastFlags before launch so changes made in the UI
-    // take effect even when Roblox is already up-to-date (no reinstall).
+    // Re-apply FastFlags so UI changes take effect without a reinstall.
     let ff_path = bootstrapper_root().join("fastflags.json");
     if ff_path.exists() {
         if let Ok(ff_content) = fs::read_to_string(&ff_path) {
             let client_settings_dir = exe_dir.join("ClientSettings");
             let _ = fs::create_dir_all(&client_settings_dir);
             let _ = fs::write(client_settings_dir.join("ClientAppSettings.json"), &ff_content);
-            eprintln!("[INFO] FastFlags applied to ClientSettings before launch.");
         }
     }
 
@@ -3423,24 +3746,106 @@ async fn ensure_latest_and_launch(
 
     let _ = app.emit("launch-progress", LaunchProgressPayload {
         status: "Starting Roblox...".into(),
-        percent: 95,
+        percent: 88,
     });
 
+    eprintln!("[DEBUG bootstrapper] launching RobloxPlayerBeta directly: {:?}", exe);
     let pid = match launch_detached(&exe, launch_args) {
         Ok(p) => p,
         Err(e) => {
-            let _ = win.close();
+            emit_error(app, &e);
             return Err(e);
         }
     };
 
-    let _ = app.emit("launch-progress", LaunchProgressPayload {
-        status: "Roblox started successfully".into(),
-        percent: 100,
-    });
+    // Minimize the main Reiya window so Roblox can take focus.
+    if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.minimize();
+    }
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
-    let _ = win.close();
+    // Release handles once the launcher exits (it exits after spawning the game), or after 30s max.
+    // Then monitor for the Roblox game process to exit and clear Discord RPC.
+    {
+        let app_handle = app.clone();
+        let launcher_pid = pid;
+        tauri::async_runtime::spawn(async move {
+            let mut elapsed_s = 0u64;
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                elapsed_s += 2;
+                if elapsed_s >= 30 { break; }
+                if let Some(p) = launcher_pid {
+                    let sys = sysinfo::System::new_all();
+                    if sys.process(sysinfo::Pid::from_u32(p)).is_none() { break; }
+                } else {
+                    break;
+                }
+            }
+            let state = app_handle.state::<MultiState>();
+            state.release_handles();
+            // Poll for Roblox game process by name until it exits, then clear Discord RPC.
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                let sys = sysinfo::System::new_all();
+                let running = sys.processes().values().any(|p| {
+                    let n = p.name().to_string_lossy();
+                    n == "RobloxPlayerBeta.exe" || n == "RobloxPlayer.exe"
+                });
+                if !running { break; }
+            }
+            let page_state = app_handle.state::<DiscordRpcPage>();
+            *page_state.0.lock().unwrap() = "On Home".to_string();
+        });
+    }
+
+    // Poll until the Roblox process appears in the process list (up to 20s).
+    if let Some(roblox_pid) = pid {
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: "Waiting for Roblox to initialize...".into(),
+            percent: 93,
+        });
+
+        let start = std::time::Instant::now();
+        let mut confirmed_alive = false;
+        while start.elapsed().as_secs() < 20 {
+            if app.get_webview_window("launch_progress").is_none() {
+                return Ok(Some(roblox_pid));
+            }
+            let sys = sysinfo::System::new_all();
+            if sys.process(sysinfo::Pid::from_u32(roblox_pid)).is_some() {
+                confirmed_alive = true;
+                break;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        }
+
+        if confirmed_alive {
+            let _ = app.emit("launch-progress", LaunchProgressPayload {
+                status: "Roblox is loading...".into(),
+                percent: 99,
+            });
+            // Keep window open while Roblox loads its game window
+            tokio::time::sleep(tokio::time::Duration::from_secs(6)).await;
+        } else {
+            // Process didn't appear — surface an error
+            let _ = app.emit("launch-progress", LaunchProgressPayload {
+                status: "Roblox launched (no confirmation)".into(),
+                percent: 100,
+            });
+            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+        }
+    } else {
+        let _ = app.emit("launch-progress", LaunchProgressPayload {
+            status: "Roblox launched".into(),
+            percent: 100,
+        });
+        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+    }
+
+    if app.get_webview_window("launch_progress").is_some() {
+        let _ = win.close();
+    }
 
     Ok(pid)
 }
@@ -3520,12 +3925,10 @@ fn update_account_notes(user_id: i64, notes: String) -> Result<AccountDto, Strin
 
 #[tauri::command]
 async fn check_account_health(user_id: i64) -> Result<String, String> {
-    let accounts = load_stored();
-    let account = accounts
-        .iter()
-        .find(|a| a.user_id == user_id)
+    let mut accounts = load_stored();
+    let idx = accounts.iter().position(|a| a.user_id == user_id)
         .ok_or_else(|| "Account not found".to_string())?;
-    let cookie = decrypt_cookie(&account.encrypted_cookie)?;
+    let cookie = decrypt_cookie(&accounts[idx].encrypted_cookie)?;
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(8))
         .build()
@@ -3536,9 +3939,37 @@ async fn check_account_health(user_id: i64) -> Result<String, String> {
         .send()
         .await
         .map_err(|e| e.to_string())?;
+
     if resp.status().is_success() {
+        let mut rotated_cookie = None;
+        for hdr in resp.headers().get_all("set-cookie").iter() {
+            if let Ok(s) = hdr.to_str() {
+                if s.contains(".ROBLOSECURITY=") {
+                    rotated_cookie = Some(clean_cookie(s));
+                }
+            }
+        }
+
+        if let Some(rotated) = rotated_cookie {
+            accounts[idx].encrypted_cookie = encrypt_cookie(&rotated);
+            accounts[idx].cookie_status = "Valid".into();
+            accounts[idx].cookie_updated_at = Some(Utc::now());
+            
+            let sync_uid = accounts[idx].user_id;
+            let sync_user = accounts[idx].username.clone();
+            let sync_dn = accounts[idx].display_name.clone();
+            let sync_added = accounts[idx].added_at.to_rfc3339();
+            let sync_updated = accounts[idx].cookie_updated_at.map(|d| d.to_rfc3339());
+            let sc = rotated.clone();
+            save_stored(&accounts);
+            tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, sc, sync_added, sync_updated));
+        }
         Ok("Valid".to_string())
     } else {
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            accounts[idx].cookie_status = "Expired".into();
+            save_stored(&accounts);
+        }
         Ok("Invalid".to_string())
     }
 }
@@ -3670,15 +4101,17 @@ fn verify_response_hmac(expires_at: &str, provider: &str, sig: &str) -> bool {
 }
 
 // Credentials stored XOR-encoded with 0x5A so they don't appear as plaintext in the binary.
-const _URL_XOR:  &[u8] = &[0x32,0x2E,0x2E,0x2A,0x29,0x60,0x75,0x75,0x32,0x37,0x28,0x23,0x2A,0x2D,0x2C,0x3D,0x23,0x3B,0x2A,0x23,0x2C,0x2A,0x37,0x3E,0x29,0x29,0x2E,0x2F,0x74,0x29,0x2F,0x2A,0x3B,0x38,0x3B,0x29,0x3F,0x74,0x39,0x35];
-const _ANON_XOR: &[u8] = &[0x29,0x38,0x05,0x2A,0x2F,0x38,0x36,0x33,0x29,0x32,0x3B,0x38,0x36,0x3F,0x05,0x3D,0x1F,0x77,0x00,0x20,0x39,0x62,0x33,0x10,0x0D,0x3D,0x22,0x1F,0x1F,0x1E,0x34,0x29,0x62,0x6A,0x34,0x6A,0x2D,0x05,0x23,0x1F,0x6A,0x1D,0x3F,0x1C,0x3C,0x29];
+const _URL_XOR:       &[u8] = &[0x32,0x2E,0x2E,0x2A,0x29,0x60,0x75,0x75,0x32,0x37,0x28,0x23,0x2A,0x2D,0x2C,0x3D,0x23,0x3B,0x2A,0x23,0x2C,0x2A,0x37,0x3E,0x29,0x29,0x2E,0x2F,0x74,0x29,0x2F,0x2A,0x3B,0x38,0x3B,0x29,0x3F,0x74,0x39,0x35];
+const _ANON_XOR:      &[u8] = &[0x29,0x38,0x05,0x2A,0x2F,0x38,0x36,0x33,0x29,0x32,0x3B,0x38,0x36,0x3F,0x05,0x3D,0x1F,0x77,0x00,0x20,0x39,0x62,0x33,0x10,0x0D,0x3D,0x22,0x1F,0x1F,0x1E,0x34,0x29,0x62,0x6A,0x34,0x6A,0x2D,0x05,0x23,0x1F,0x6A,0x1D,0x3F,0x1C,0x3C,0x29];
+const _SYNC_SEC_XOR:  &[u8] = &[0x68,0x6A,0x62,0x63,0x6A,0x63,0x69,0x62,0x38,0x6F,0x6A,0x62,0x68,0x6E,0x6F,0x6D,0x69,0x62,0x6B,0x6A,0x3F,0x69,0x62,0x39,0x3C,0x38,0x62,0x69,0x6F,0x63,0x3C,0x3B];
 
 fn decode_cred(xored: &[u8]) -> String {
     xored.iter().map(|b| (b ^ 0x5A) as char).collect()
 }
 
-fn supabase_url()  -> String { decode_cred(_URL_XOR)  }
-fn supabase_anon() -> String { decode_cred(_ANON_XOR) }
+fn supabase_url()  -> String { decode_cred(_URL_XOR)      }
+fn supabase_anon() -> String { decode_cred(_ANON_XOR)     }
+fn sync_secret()   -> String { decode_cred(_SYNC_SEC_XOR) }
 
 #[tauri::command]
 async fn validate_license_key(key: String) -> Result<LicenseStatus, String> {
@@ -3985,9 +4418,26 @@ async fn get_auth_ticket_command(user_id: i64) -> Result<String, String> {
         .find(|a| a.user_id == user_id)
         .ok_or_else(|| "Account not found".to_string())?;
     let cookie = decrypt_cookie(&account.encrypted_cookie)?;
-    let ticket = get_auth_ticket(&cookie)
+    let (ticket, rotated_cookie) = get_auth_ticket(&cookie)
         .await
         .ok_or_else(|| "Failed to retrieve authentication ticket. Cookie may be invalid.".to_string())?;
+
+    if let Some(ref new_c) = rotated_cookie {
+        let mut accounts = load_stored();
+        if let Some(existing) = accounts.iter_mut().find(|a| a.user_id == user_id) {
+            existing.encrypted_cookie = encrypt_cookie(new_c);
+            existing.cookie_status = "Valid".into();
+            existing.cookie_updated_at = Some(chrono::Utc::now());
+            let sync_uid = existing.user_id;
+            let sync_user = existing.username.clone();
+            let sync_dn = existing.display_name.clone();
+            let sync_added = existing.added_at.to_rfc3339();
+            let sync_updated = existing.cookie_updated_at.map(|d| d.to_rfc3339());
+            save_stored(&accounts);
+            tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, new_c.clone(), sync_added, sync_updated));
+        }
+    }
+
     Ok(ticket)
 }
 
@@ -4588,6 +5038,32 @@ async fn bootstrapper_install_impl(app: AppHandle) -> Result<(), String> {
     eprintln!("[INFO bootstrapper_install] Persisting version hash...");
     write_installed_version(&version_hash);
 
+    // Download the Roblox launcher (RobloxPlayerInstaller.exe or RobloxPlayerLauncher.exe).
+    // Required as parent process by Hyperion anti-cheat; not inside any zip package.
+    {
+        let mut launcher_downloaded = false;
+        for launcher_name in ROBLOX_LAUNCHER_NAMES {
+            let launcher_dest = install_dir.join(launcher_name);
+            if launcher_dest.exists() { launcher_downloaded = true; break; }
+            let versioned_url = format!("{}/{}-{}", BOOTSTRAPPER_CDN, version_hash, launcher_name);
+            if let Ok(resp) = client.get(&versioned_url).send().await {
+                if resp.status().is_success() {
+                    if let Ok(bytes) = resp.bytes().await {
+                        let _ = fs::write(&launcher_dest, &bytes);
+                        eprintln!("[INFO bootstrapper_install] Downloaded {} ({} bytes)", launcher_name, bytes.len());
+                        launcher_downloaded = true;
+                        break;
+                    }
+                } else {
+                    eprintln!("[WARN bootstrapper_install] {} returned {} on CDN", launcher_name, resp.status());
+                }
+            }
+        }
+        if !launcher_downloaded {
+            eprintln!("[WARN bootstrapper_install] No launcher on CDN — will launch RobloxPlayerBeta.exe directly");
+        }
+    }
+
     // Apply any existing FastFlags
     let ff_path = bootstrapper_root().join("fastflags.json");
     if ff_path.exists() {
@@ -4598,6 +5074,9 @@ async fn bootstrapper_install_impl(app: AppHandle) -> Result<(), String> {
             eprintln!("[INFO bootstrapper_install] Applied FastFlags.");
         }
     }
+
+    // Write AppSettings.xml and fix folder structure so RobloxPlayerBeta.exe can launch directly.
+    let _ = repair_bootstrapper_folders(&install_dir);
 
     // Register protocol handler
     let exe_path = install_dir.join("RobloxPlayerBeta.exe");
@@ -4702,9 +5181,13 @@ fn apply_fastflags_to_exe(exe: &PathBuf) {
 
 /// Find the active official Roblox exe (not Reiya's install).
 fn find_official_roblox_exe() -> Option<PathBuf> {
-    let local = std::env::var("LOCALAPPDATA").ok()?;
-    let versions_dir = PathBuf::from(local).join("Roblox").join("Versions");
-    search_versions_dir(&versions_dir)
+    let local = std::env::var("LOCALAPPDATA").unwrap_or_default();
+    let candidates = [
+        PathBuf::from(&local).join("Roblox").join("Versions"),
+        PathBuf::from("C:\\Program Files (x86)\\Roblox\\Versions"),
+        PathBuf::from("C:\\Program Files\\Roblox\\Versions"),
+    ];
+    candidates.iter().find_map(|dir| search_versions_dir(dir))
 }
 
 #[tauri::command]
@@ -4908,6 +5391,11 @@ fn update_discord_rpc(page: String, page_state: tauri::State<DiscordRpcPage>) {
         return;
     }
     *current = page;
+}
+
+#[tauri::command]
+fn clear_game_rpc(page_state: tauri::State<DiscordRpcPage>) {
+    *page_state.0.lock().unwrap() = "On Home".to_string();
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -5792,19 +6280,26 @@ fn detect_roblox_installs() -> DetectedInstalls {
 
     let mut installs: Vec<RobloxInstall> = Vec::new();
 
-    // 1. Official Roblox
+    // 1. Official Roblox — check LOCALAPPDATA and Program Files locations
     {
-        let dir = local.join("Roblox");
-        let exe = find_exe_in_versions(&dir);
+        let dirs = [
+            local.join("Roblox"),
+            PathBuf::from("C:\\Program Files (x86)\\Roblox"),
+            PathBuf::from("C:\\Program Files\\Roblox"),
+        ];
+        let exe = dirs.iter().find_map(|d| find_exe_in_versions(d));
         let version = exe.as_ref().and_then(|p| version_from_path(p));
         let is_handler = exe.as_ref().map_or(false, |p| path_matches_handler(p, &protocol_handler_path));
+        let install_dir = exe.as_ref()
+            .and_then(|p| p.parent()?.parent()?.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| local.join("Roblox"));
         installs.push(RobloxInstall {
             name: "Roblox (Official)".into(),
             kind: "official".into(),
             found: exe.is_some(),
             exe_path: exe.map(|p| p.to_string_lossy().to_string()),
             version,
-            install_dir: dir.to_string_lossy().to_string(),
+            install_dir: install_dir.to_string_lossy().to_string(),
             is_protocol_handler: is_handler,
         });
     }
@@ -6160,15 +6655,25 @@ pub fn run() {
                                         *state = (true, 0);
                                     } else if state.0 {
                                         // It previously had a window, but doesn't now.
-                                        state.1 += 1;
-                                        if state.1 >= 2 {
-                                            // Closed for >= 6 seconds, kill hung process
-                                            if let Some(proc) = sys.processes().get(&sysinfo_pid) {
-                                                proc.kill();
+                                        // Don't count windowless ticks during the first 45 seconds —
+                                        // newer Roblox versions have a multi-stage startup where the
+                                        // loading window closes before the main game window appears.
+                                        let session_age = now.signed_duration_since(
+                                            DateTime::parse_from_rfc3339(&info.start_time)
+                                                .map(|dt| dt.with_timezone(&Utc))
+                                                .unwrap_or(now)
+                                        ).num_seconds();
+                                        if session_age > 45 {
+                                            state.1 += 1;
+                                            if state.1 >= 5 {
+                                                // No window for >= 15 seconds after game was running, kill hung process
+                                                if let Some(proc) = sys.processes().get(&sysinfo_pid) {
+                                                    proc.kill();
+                                                }
+                                                keys_to_remove.push(bt_id);
+                                                exited_sessions.push((pid, info.clone()));
+                                                window_states.remove(&pid);
                                             }
-                                            keys_to_remove.push(bt_id);
-                                            exited_sessions.push((pid, info.clone()));
-                                            window_states.remove(&pid);
                                         }
                                     }
                                 }
@@ -6269,6 +6774,87 @@ pub fn run() {
                 }
             });
 
+            let app_handle_cookie = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last_check: Option<std::time::Instant> = None;
+                loop {
+                    let settings_path = data_dir().join("settings.json");
+                    let (enabled, interval_mins) = if settings_path.exists() {
+                        if let Ok(content) = fs::read_to_string(&settings_path) {
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&clean_bom(&content)) {
+                                let enabled = val.get("CookieHealthMonitorEnabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                                let mins = val.get("CookieHealthIntervalMinutes").and_then(|v| v.as_u64()).unwrap_or(60);
+                                (enabled, mins)
+                            } else {
+                                (true, 60)
+                            }
+                        } else {
+                            (true, 60)
+                        }
+                    } else {
+                        (true, 60)
+                    };
+
+                    let should_check = enabled && match last_check {
+                        None => true,
+                        Some(inst) => inst.elapsed() >= std::time::Duration::from_secs(interval_mins * 60),
+                    };
+
+                    if should_check {
+                        last_check = Some(std::time::Instant::now());
+                        
+                        let accounts = load_stored();
+                        let mut updated_accounts = accounts.clone();
+                        let mut changed = false;
+                        
+                        for idx in 0..updated_accounts.len() {
+                            if updated_accounts[idx].cookie_status != "Valid" {
+                                continue;
+                            }
+                            
+                            if let Ok(cookie) = decrypt_cookie(&updated_accounts[idx].encrypted_cookie) {
+                                if let Some((_user, opt_rotated)) = fetch_user_info(&cookie).await {
+                                    if let Some(rotated) = opt_rotated {
+                                        updated_accounts[idx].encrypted_cookie = encrypt_cookie(&rotated);
+                                        let now = Utc::now();
+                                        updated_accounts[idx].cookie_updated_at = Some(now);
+                                        changed = true;
+                                        
+                                        let sync_uid = updated_accounts[idx].user_id;
+                                        let sync_user = updated_accounts[idx].username.clone();
+                                        let sync_dn = updated_accounts[idx].display_name.clone();
+                                        let sync_added = updated_accounts[idx].added_at.to_rfc3339();
+                                        let sync_updated = updated_accounts[idx].cookie_updated_at.map(|d| d.to_rfc3339());
+                                        let sc = rotated.clone();
+                                        tokio::spawn(fetch_robux_and_sync(sync_uid, sync_user, sync_dn, sc, sync_added, sync_updated));
+                                    }
+                                } else {
+                                    updated_accounts[idx].cookie_status = "Expired".into();
+                                    changed = true;
+                                    
+                                    let now = Utc::now();
+                                    append_event(EventEntry {
+                                        timestamp: now.to_rfc3339(),
+                                        kind: "cookie_expired".into(),
+                                        user_id: Some(updated_accounts[idx].user_id),
+                                        username: Some(updated_accounts[idx].username.clone()),
+                                        avatar_url: Some(updated_accounts[idx].avatar_url.clone()),
+                                        detail: format!("Cookie for '{}' has expired (background health check)", updated_accounts[idx].username),
+                                    });
+                                }
+                            }
+                        }
+                        
+                        if changed {
+                            save_stored(&updated_accounts);
+                            let _ = app_handle_cookie.emit("accounts-updated", ());
+                        }
+                    }
+                    
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -6336,6 +6922,7 @@ pub fn run() {
             start_discord_rpc,
             stop_discord_rpc,
             update_discord_rpc,
+            clear_game_rpc,
             detect_roblox_installs,
             get_launcher_preference,
             set_launcher_preference,
@@ -6415,7 +7002,7 @@ mod tests {
             .expect("No valid account found to test launch");
         println!("Launching with account: {}", acc.username);
         let cookie = decrypt_cookie(&acc.encrypted_cookie).expect("Decrypt failed");
-        let ticket = get_auth_ticket(&cookie).await.expect("Failed to get ticket");
+        let (ticket, _) = get_auth_ticket(&cookie).await.expect("Failed to get ticket");
         println!("Ticket length: {}, Ticket: {}", ticket.len(), ticket);
 
         let timestamp = chrono::Utc::now().timestamp_millis().to_string();

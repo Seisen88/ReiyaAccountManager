@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "react-router-dom";
 import { useLanguage } from "../context/LanguageContext";
@@ -188,7 +188,7 @@ export default function Settings() {
     CheckForUpdates: true, SavePasswords: true, DisableAgingAlert: false,
     HideMultiRobloxAlert: false, RunOnStartup: false, MinimizeToTray: true,
     AutoRefreshCookies: true, MultiRoblox: true, ShuffleLowestServer: false,
-    UseCustomSettings: false, UseBootstrapperLaunch: false, UnlockFps: false,
+    UseCustomSettings: false, UseBootstrapperLaunch: true, UnlockFps: false,
     MaxFps: 120, LaunchDelay: 3.0, MaxRecentGames: 8,
     RegionFormat: "<city>, <countryCode>", ShowAccountPresence: true,
     PresenceRefreshInterval: 30, CookieHealthMonitorEnabled: true,
@@ -217,6 +217,7 @@ export default function Settings() {
       const merged = { ...DEFAULTS, ...data };
       settingsRef.current = merged;
       setSettings(merged);
+      localStorage.setItem("reiya_use_bootstrapper", merged.UseBootstrapperLaunch ? "true" : "false");
     } catch (e) {
       setError(String(e));
       const def = { ...DEFAULTS };
@@ -242,6 +243,7 @@ export default function Settings() {
     settingsRef.current = next;
     setSettings(next);
     if (key === "Language") setLanguage(value);
+    if (key === "UseBootstrapperLaunch") localStorage.setItem("reiya_use_bootstrapper", value ? "true" : "false");
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(async () => {
       try {

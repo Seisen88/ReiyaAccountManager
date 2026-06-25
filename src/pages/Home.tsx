@@ -361,6 +361,7 @@ export default function Home() {
       // Sync bootstrapper from global settings
       if (settingsData && settingsData.UseBootstrapperLaunch !== undefined) {
         setUseBootstrapper(settingsData.UseBootstrapperLaunch);
+        localStorage.setItem("reiya_use_bootstrapper", settingsData.UseBootstrapperLaunch ? "true" : "false");
       }
 
       // Sync language from settings
@@ -380,6 +381,7 @@ export default function Home() {
 
     // Listen for session status changes to reload statistics and sessions dynamically
     let unlisten: (() => void) | null = null;
+    let unlistenAccounts: (() => void) | null = null;
     const setupListener = async () => {
       unlisten = await listen("session-status-changed", () => {
         Promise.all([
@@ -396,9 +398,12 @@ export default function Home() {
           const uid = playingUserIdRef.current;
           if (uid !== null && !sess.some((s: Session) => s.user_id === uid)) {
             playingUserIdRef.current = null;
-            invoke("update_discord_rpc", { page: "On Home" }).catch(() => {});
+            invoke("clear_game_rpc").catch(() => {});
           }
         });
+      });
+      unlistenAccounts = await listen("accounts-updated", () => {
+        refreshAccounts();
       });
     };
     setupListener();
@@ -442,6 +447,7 @@ export default function Home() {
     return () => {
       clearInterval(interval);
       if (unlisten) unlisten();
+      if (unlistenAccounts) unlistenAccounts();
       document.removeEventListener("keydown", handleKey);
     };
   }, []);
@@ -1179,7 +1185,7 @@ export default function Home() {
       }, 3000);
     } catch (e) {
       setLaunchError(String(e));
-      invoke("update_discord_rpc", { page: "On Home" }).catch(() => {});
+      invoke("clear_game_rpc").catch(() => {});
     } finally {
       setLaunching(false);
     }
@@ -1225,7 +1231,7 @@ export default function Home() {
       }, 3000);
     } catch (e) {
       setLaunchError(String(e));
-      invoke("update_discord_rpc", { page: "On Home" }).catch(() => {});
+      invoke("clear_game_rpc").catch(() => {});
     } finally {
       setLaunching(false);
     }

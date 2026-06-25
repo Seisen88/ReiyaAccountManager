@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { useState, useEffect } from "react";
+import { listen, emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useLanguage } from "../context/LanguageContext";
 
@@ -8,27 +8,37 @@ interface LaunchProgressEvent {
   percent: number;
 }
 
+interface LaunchProgressErrorEvent {
+  message: string;
+}
+
 export default function LaunchProgress() {
   const { t } = useLanguage();
   const [status, setStatus] = useState("Initializing launcher...");
   const [percent, setPercent] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Listen to backend progress updates
-    const unlistenPromise = listen<LaunchProgressEvent>("launch-progress", (event) => {
+    const unlistenProgress = listen<LaunchProgressEvent>("launch-progress", (event) => {
       setStatus(event.payload.status);
       setPercent(event.payload.percent);
     });
 
+    const unlistenError = listen<LaunchProgressErrorEvent>("launch-progress-error", (event) => {
+      setError(event.payload.message);
+    });
+
+    // Tell the backend the listener is registered — it's waiting for this before emitting
+    emit("launch-progress-ready", {}).catch(() => {});
+
     return () => {
-      unlistenPromise.then((unlisten) => unlisten());
+      unlistenProgress.then((u) => u());
+      unlistenError.then((u) => u());
     };
   }, []);
 
-  const handleCancel = () => {
-    // Simply close the window. The backend will detect that the window is gone and cancel.
-    const appWindow = getCurrentWindow();
-    appWindow.close();
+  const handleClose = () => {
+    getCurrentWindow().close();
   };
 
   return (
@@ -49,7 +59,7 @@ export default function LaunchProgress() {
         position: "relative",
       }}
     >
-      {/* Soft background glow */}
+      {/* Background glow — red on error, amber normally */}
       <div
         style={{
           position: "absolute",
@@ -58,13 +68,16 @@ export default function LaunchProgress() {
           transform: "translate(-50%, -50%)",
           width: 200,
           height: 200,
-          background: "radial-gradient(circle, rgba(251, 191, 36, 0.12) 0%, transparent 70%)",
+          background: error
+            ? "radial-gradient(circle, rgba(239,68,68,0.12) 0%, transparent 70%)"
+            : "radial-gradient(circle, rgba(251,191,36,0.12) 0%, transparent 70%)",
           zIndex: 0,
           pointerEvents: "none",
+          transition: "background 0.4s ease",
         }}
       />
 
-      {/* Header Info */}
+      {/* Header */}
       <div
         data-tauri-drag-region
         style={{
@@ -83,16 +96,10 @@ export default function LaunchProgress() {
         <span data-tauri-drag-region>{t("launcher")}: Reiya Bootstrapper</span>
       </div>
 
-      {/* Main Content (Logo + Pulse Effect) */}
+      {/* Logo */}
       <div
         data-tauri-drag-region
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 16,
-          zIndex: 1,
-        }}
+        style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, zIndex: 1 }}
       >
         <div
           data-tauri-drag-region
@@ -101,100 +108,109 @@ export default function LaunchProgress() {
             height: 76,
             borderRadius: 20,
             background: "var(--g02)",
-            border: "1px solid var(--g06)",
-            boxShadow: "0 12px 32px rgba(0, 0, 0, 0.4)",
+            border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "var(--g06)"}`,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
+            transition: "border-color 0.3s ease",
           }}
         >
-          {/* Animated pulsing outer ring */}
           <div
             style={{
               position: "absolute",
               inset: -6,
               borderRadius: 24,
-              border: "2px solid var(--amber)",
-              opacity: 0.3,
-              animation: "pulse 2s infinite ease-in-out",
+              border: `2px solid ${error ? "rgba(239,68,68,0.6)" : "var(--amber)"}`,
+              opacity: error ? 0.7 : 0.3,
+              animation: error ? "none" : "pulse 2s infinite ease-in-out",
+              transition: "border-color 0.3s ease, opacity 0.3s ease",
             }}
           />
           <img
             src="/logo.png"
             alt="Logo"
             data-tauri-drag-region
-            style={{
-              width: 48,
-              height: 48,
-              objectFit: "contain",
-            }}
+            style={{ width: 48, height: 48, objectFit: "contain" }}
           />
         </div>
       </div>
 
-      {/* Footer (Status, Progress Bar, Cancel Button) */}
+      {/* Footer */}
       <div
         data-tauri-drag-region
-        style={{
-          width: "100%",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 16,
-          zIndex: 1,
-        }}
+        style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 16, zIndex: 1 }}
       >
-        {/* Status and Percentage */}
-        <div
-          data-tauri-drag-region
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            width: "100%",
-            fontSize: 11.5,
-            fontWeight: 500,
-            color: "var(--t2)",
-            padding: "0 4px",
-          }}
-        >
-          <span style={{ fontWeight: 600, color: "var(--t1)" }}>{status === "Initializing launcher..." ? t("initializing_launcher") : status}</span>
-          <span>{percent}%</span>
-        </div>
-
-        {/* Progress Bar Track */}
-        <div
-          style={{
-            width: "100%",
-            height: 6,
-            background: "var(--g04)",
-            borderRadius: 99,
-            overflow: "hidden",
-            border: "1px solid var(--g02)",
-          }}
-        >
-          {/* Progress Bar Fill */}
+        {error ? (
           <div
             style={{
-              width: `${percent}%`,
-              height: "100%",
-              background: "linear-gradient(90deg, #F59E0B 0%, #D97706 100%)",
-              boxShadow: "0 0 10px rgba(245, 158, 11, 0.5)",
-              borderRadius: 99,
-              transition: "width 0.3s ease-out",
+              width: "100%",
+              padding: "10px 14px",
+              borderRadius: 8,
+              background: "rgba(239,68,68,0.1)",
+              border: "1px solid rgba(239,68,68,0.3)",
+              fontSize: 11,
+              fontWeight: 500,
+              color: "#f87171",
+              textAlign: "center",
+              lineHeight: 1.6,
             }}
-          />
-        </div>
+          >
+            {error}
+          </div>
+        ) : (
+          <>
+            <div
+              data-tauri-drag-region
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                width: "100%",
+                fontSize: 11.5,
+                fontWeight: 500,
+                color: "var(--t2)",
+                padding: "0 4px",
+              }}
+            >
+              <span style={{ fontWeight: 600, color: "var(--t1)" }}>
+                {status === "Initializing launcher..." ? t("initializing_launcher") : status}
+              </span>
+              <span>{percent}%</span>
+            </div>
 
-        {/* Cancel Button */}
+            <div
+              style={{
+                width: "100%",
+                height: 6,
+                background: "var(--g04)",
+                borderRadius: 99,
+                overflow: "hidden",
+                border: "1px solid var(--g02)",
+              }}
+            >
+              <div
+                style={{
+                  width: `${percent}%`,
+                  height: "100%",
+                  background: "linear-gradient(90deg, #F59E0B 0%, #D97706 100%)",
+                  boxShadow: "0 0 10px rgba(245,158,11,0.5)",
+                  borderRadius: 99,
+                  transition: "width 0.3s ease-out",
+                }}
+              />
+            </div>
+          </>
+        )}
+
         <button
-          onClick={handleCancel}
+          onClick={handleClose}
           style={{
             padding: "8px 24px",
             borderRadius: 8,
-            border: "1px solid var(--border-mid)",
-            background: "var(--surface-2)",
-            color: "var(--t2)",
+            border: `1px solid ${error ? "rgba(239,68,68,0.4)" : "var(--border-mid)"}`,
+            background: error ? "rgba(239,68,68,0.1)" : "var(--surface-2)",
+            color: error ? "#f87171" : "var(--t2)",
             fontSize: 11,
             fontWeight: 600,
             cursor: "pointer",
@@ -202,26 +218,25 @@ export default function LaunchProgress() {
             marginTop: 4,
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--t1)";
-            e.currentTarget.style.borderColor = "var(--g20)";
-            e.currentTarget.style.background = "var(--surface-3)";
+            e.currentTarget.style.color = error ? "#fca5a5" : "var(--t1)";
+            e.currentTarget.style.borderColor = error ? "rgba(239,68,68,0.7)" : "var(--g20)";
+            e.currentTarget.style.background = error ? "rgba(239,68,68,0.2)" : "var(--surface-3)";
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--t2)";
-            e.currentTarget.style.borderColor = "var(--border-mid)";
-            e.currentTarget.style.background = "var(--surface-2)";
+            e.currentTarget.style.color = error ? "#f87171" : "var(--t2)";
+            e.currentTarget.style.borderColor = error ? "rgba(239,68,68,0.4)" : "var(--border-mid)";
+            e.currentTarget.style.background = error ? "rgba(239,68,68,0.1)" : "var(--surface-2)";
           }}
         >
-          {t("cancel")}
+          {error ? "Dismiss" : t("cancel")}
         </button>
       </div>
 
-      {/* Pulse Keyframe Animation Inject */}
       <style>{`
         @keyframes pulse {
-          0% { transform: scale(1); opacity: 0.3; }
-          50% { transform: scale(1.08); opacity: 0.6; }
-          100% { transform: scale(1); opacity: 0.3; }
+          0%   { transform: scale(1);    opacity: 0.3; }
+          50%  { transform: scale(1.08); opacity: 0.6; }
+          100% { transform: scale(1);    opacity: 0.3; }
         }
       `}</style>
     </div>
